@@ -1,7 +1,7 @@
 # Multi-Agent AI Finance Assistant
 
 ![Python](https://img.shields.io/badge/python-3.10+-blue.svg)
-![License](https://img.shields.io/github/license/vansh-121/Multi-Agent-AI-Finance-Assistant)
+![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Last Commit](https://img.shields.io/github/last-commit/vansh-121/Multi-Agent-AI-Finance-Assistant)
 ![Forks](https://img.shields.io/github/forks/vansh-121/Multi-Agent-AI-Finance-Assistant?style=social)
 ![Stars](https://img.shields.io/github/stars/vansh-121/Multi-Agent-AI-Finance-Assistant?style=social)
