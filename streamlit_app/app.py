@@ -4,14 +4,32 @@ import io
 import logging
 import json
 import os
+import streamlit.secrets as secrets
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Determine the API URL based on environment
-# For Streamlit Cloud deployment, we need to use the public URL or internal service name
-API_URL = os.environ.get("API_URL", "http://localhost:8000")
+# Determine the API URL with better fallback logic
+# 1. Check environment variable
+# 2. Check Streamlit secrets (for local development)
+# 3. Fall back to default
 
+# First try environment variable
+API_URL = os.environ.get("API_URL")
+
+# If not found, check Streamlit secrets (for local development)
+if not API_URL:
+    try:
+        API_URL = secrets.server.API_URL
+        logger.info("Using API URL from secrets")
+    except (AttributeError, KeyError):
+        logger.warning("API_URL not found in secrets")
+        API_URL = None
+
+# Final fallback to localhost
+if not API_URL:
+    API_URL = "http://localhost:8000"
+    
 # Log the API URL for debugging
 logger.info(f"Using API URL: {API_URL}")
 
@@ -23,6 +41,7 @@ Enter a query about specific stocks or market conditions to get an AI-generated 
 
 # For debugging - show the API endpoint in the sidebar
 st.sidebar.markdown(f"**API Endpoint:** `{API_URL}`")
+st.sidebar.info("If the endpoint is incorrect, please check your .streamlit/secrets.toml file or environment variables.")
 
 # Stock selection feature
 st.sidebar.header("Stock Selection")
@@ -142,6 +161,14 @@ if st.button("Get Brief"):
                                     st.success("Query processed successfully!")
             except requests.exceptions.ConnectionError:
                 st.error(f"Cannot connect to FastAPI at {API_URL}. The API service may not be running or properly configured.")
+                st.info("Make sure that both services are running. For local development:")
+                st.code("""
+# Terminal 1: Start FastAPI
+uvicorn orchestrator.orchestrator:app --host 0.0.0.0 --port 8000
+
+# Terminal 2: Start Streamlit
+streamlit run streamlit_app/app.py
+                """)
                 logger.error(f"Connection error: Failed to connect to FastAPI server at {API_URL}")
         except Exception as e:
             st.error(f"Failed to process query: {str(e)}")
@@ -194,15 +221,24 @@ with st.expander("Troubleshooting"):
        - Verify that the API_URL environment variable is set correctly
        - In cloud deployments, make sure the FastAPI service is properly exposed
        
-    2. **Running in Cloud**: Make sure to set the API_URL environment variable to the correct endpoint:
-       - For Streamlit Cloud with combined deployment: Use the service name like "http://fastapi:8000"
-       - For separate deployments: Use the full URL of your FastAPI service
+    2. **Running in local development**:
+       - Create a `.streamlit/secrets.toml` file with content:
+         ```toml
+         [server]
+         API_URL = "http://localhost:8000"
+         ```
+       - Start FastAPI server: `uvicorn orchestrator.orchestrator:app --host 0.0.0.0 --port 8000`
+       - Start Streamlit app: `streamlit run streamlit_app/app.py`
        
-    3. **Internal Server Error (500)**: Check the logs of the FastAPI server for more details.
+    3. **Running in Docker**:
+       - Use docker-compose: `docker-compose up`
+       - The environment variables will be set automatically
+       
+    4. **Internal Server Error (500)**: Check the logs of the FastAPI server for more details.
     
-    4. **JSON serialization errors**: These often happen with pandas DataFrames. The updated code should handle this.
+    5. **JSON serialization errors**: These often happen with pandas DataFrames. The updated code should handle this.
     
-    5. **Empty or incorrect responses**: The system now has fallback data to ensure you always get a response.
+    6. **Empty or incorrect responses**: The system now has fallback data to ensure you always get a response.
     
-    6. **Stock not recognized**: Try using the ticker symbol directly (e.g., AAPL instead of Apple) in your query.
+    7. **Stock not recognized**: Try using the ticker symbol directly (e.g., AAPL instead of Apple) in your query.
     """)
