@@ -610,7 +610,7 @@ def main():
                     except:
                         st.error(f"Audio processing failed with status {response.status_code}")
             except requests.exceptions.ConnectionError:
-                st.error("Cannot connect to FastAPI server at http://localhost:8000. Make sure it's running.")
+                st.error("FastAPI server is trying to connect to Render services. If it takes long, try running it locally.")
             except Exception as e:
                 st.error(f"Failed to process audio query: {str(e)}")
     
