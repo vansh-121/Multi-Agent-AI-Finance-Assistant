@@ -4,7 +4,6 @@ import io
 import logging
 import json
 import os
-import streamlit.secrets as secrets
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -20,7 +19,7 @@ API_URL = os.environ.get("API_URL")
 # If not found, check Streamlit secrets (for local development)
 if not API_URL:
     try:
-        API_URL = secrets.server.API_URL
+        API_URL = st.secrets["server"]["API_URL"]
         logger.info("Using API URL from secrets")
     except (AttributeError, KeyError):
         logger.warning("API_URL not found in secrets")
