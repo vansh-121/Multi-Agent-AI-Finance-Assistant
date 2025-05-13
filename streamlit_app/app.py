@@ -138,7 +138,7 @@ if st.button("Get Brief"):
                                     st.markdown(analyze_data["summary"])
                                     st.success("Query processed successfully!")
             except requests.exceptions.ConnectionError:
-                st.error(f"Cannot connect to FastAPI server at {API_URL}. Make sure it's running.")
+                st.error(f"FastAPI server is trying to connect to Render services. If it takes long, try running it locally.")
                 logger.error(f"Connection error: Failed to connect to FastAPI server at {API_URL}")
         except Exception as e:
             st.error(f"Failed to process query: {str(e)}")
@@ -175,7 +175,7 @@ if audio_file is not None:
                     st.error(f"Audio processing failed with status {response.status_code}")
                     logger.error(f"Audio processing failed with status {response.status_code}")
         except requests.exceptions.ConnectionError:
-            st.error(f"Cannot connect to FastAPI server at {API_URL}. Make sure it's running.")
+            st.error(f"FastAPI server is trying to connect to Render services. If it takes long, try running it locally.")
             logger.error(f"Connection error: Failed to connect to FastAPI server at {API_URL}")
         except Exception as e:
             st.error(f"Failed to process audio query: {str(e)}")
