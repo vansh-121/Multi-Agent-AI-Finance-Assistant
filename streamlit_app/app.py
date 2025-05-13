@@ -30,9 +30,11 @@ selected_stocks = st.sidebar.multiselect("Select stocks", common_stocks[selected
 
 # Prepare query with selected stocks
 stock_query = ""
+selected_symbols = []
 if selected_stocks:
-    stock_symbols = [stock.split(" ")[0] for stock in selected_stocks]
-    stock_query = f"What's our risk exposure in {', '.join(stock_symbols)}?"
+    # Extract just the symbol part (before the space)
+    selected_symbols = [stock.split(" ")[0] for stock in selected_stocks]
+    stock_query = f"What's our risk exposure in {', '.join(selected_symbols)}?"
 
 # Text query input with default that includes selected stocks
 query = st.text_input("Ask something:", 
@@ -51,9 +53,16 @@ if st.button("Get Brief"):
                     st.info("FastAPI server is healthy. Processing your request...")
                     logger.info("FastAPI server is healthy")
                     
-                    # Step 1: Retrieve relevant documents
+                    # Step 1: Retrieve relevant documents with explicit symbols if selected
                     logger.info(f"Sending retrieve request with query: {query}")
-                    retrieve_response = requests.get("http://localhost:8000/retrieve/retrieve", params={"query": query})
+                    
+                    # Add selected symbols as query parameters if they exist
+                    params = {"query": query}
+                    if selected_symbols:
+                        params["symbols"] = ",".join(selected_symbols)
+                        st.info(f"Explicitly requesting analysis for: {', '.join(selected_symbols)}")
+                    
+                    retrieve_response = requests.get("http://localhost:8000/retrieve/retrieve", params=params)
                     logger.info(f"Retrieve response status: {retrieve_response.status_code}")
                     
                     if retrieve_response.status_code != 200:
@@ -75,6 +84,10 @@ if st.button("Get Brief"):
                             st.error(f"Retrieval error: {retrieve_data['error']}")
                             logger.error(f"Retrieval error: {retrieve_data['error']}")
                         else:
+                            # If we have selected symbols, make sure they're in the data
+                            if selected_symbols:
+                                retrieve_data["symbols"] = selected_symbols
+                            
                             # Display the analyzed stocks
                             symbols = retrieve_data.get("symbols", [])
                             if symbols:
@@ -131,7 +144,13 @@ if audio_file is not None:
     with st.spinner("Processing audio query..."):
         try:
             files = {"audio": (audio_file.name, audio_file, "audio/wav")}
-            response = requests.post("http://localhost:8000/process_query", files=files, stream=True)
+            
+            # If we have selected symbols, add them as form data
+            data = {}
+            if selected_symbols:
+                data = {"symbols": ",".join(selected_symbols)}
+                
+            response = requests.post("http://localhost:8000/process_query", files=files, data=data, stream=True)
             logger.info(f"Audio process_query response status: {response.status_code}")
             
             if response.status_code == 200:

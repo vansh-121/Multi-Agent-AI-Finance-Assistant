@@ -1,7 +1,7 @@
 import sys
 import os
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from fastapi import FastAPI, UploadFile, File, HTTPException
+from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Query
 from fastapi.responses import StreamingResponse
 from data_ingestion.api_agent import APIAgent
 from data_ingestion.scrapping_agent import ScrapingAgent
@@ -14,6 +14,7 @@ import pandas as pd
 from fastapi.middleware.cors import CORSMiddleware
 import json
 import re
+from typing import Optional, List
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -109,16 +110,25 @@ async def health_check():
     return {"status": "healthy"}
 
 @app.get("/retrieve/retrieve")
-async def retrieve(query: str):
+async def retrieve(
+    query: str, 
+    symbols: Optional[str] = None
+):
     try:
         logger.info(f"Processing retrieve request for query: {query}")
         
-        # Step 1: Extract symbols from the query
-        symbols = extract_symbols_from_query(query)
-        logger.info(f"Extracted symbols: {symbols}")
+        # Step 1: Extract symbols from the query or use explicitly provided symbols
+        if symbols:
+            # If explicit symbols are provided, use them
+            symbol_list = [s.strip() for s in symbols.split(",")]
+            logger.info(f"Using explicitly provided symbols: {symbol_list}")
+        else:
+            # Otherwise extract them from the query
+            symbol_list = extract_symbols_from_query(query)
+            logger.info(f"Extracted symbols from query: {symbol_list}")
         
         # Step 2: Fetch market data
-        market_data = api_agent.get_market_data(symbols)
+        market_data = api_agent.get_market_data(symbol_list)
         
         if not market_data:
             logger.error("Failed to fetch market data")
@@ -133,13 +143,13 @@ async def retrieve(query: str):
                 serialized_market_data[symbol] = data
         
         # Step 3: Generate news URLs based on symbols
-        news_urls = [f"https://finance.yahoo.com/quote/{symbol}/news/" for symbol in symbols[:2]]  # Limit to first 2 symbols
+        news_urls = [f"https://finance.yahoo.com/quote/{symbol}/news/" for symbol in symbol_list[:2]]  # Limit to first 2 symbols
         articles = scraping_agent.scrape_news(news_urls)
         
         if not articles:
             # If scraping failed, use fallback content
             articles = []
-            for symbol in symbols:
+            for symbol in symbol_list:
                 company_name = next((k for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
                 articles.append({
                     "title": f"{company_name.title()} News", 
@@ -165,7 +175,7 @@ async def retrieve(query: str):
         if not context:
             # If retrieval failed, use fallback content
             context = []
-            for symbol in symbols:
+            for symbol in symbol_list:
                 company_name = next((k for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
                 context.append(f"{company_name.title()} continues to be a key player in the technology market.")
             logger.info("Using fallback context")
@@ -175,7 +185,7 @@ async def retrieve(query: str):
             "market_data": serialized_market_data,
             "context": context,
             "query": query,
-            "symbols": symbols
+            "symbols": symbol_list
         }
     except Exception as e:
         logger.error(f"Error retrieving data: {str(e)}")
@@ -309,7 +319,10 @@ async def analyze(data: dict):
         return {"error": str(e)}
 
 @app.post("/process_query")
-async def process_query(audio: UploadFile = File(...)):
+async def process_query(
+    audio: UploadFile = File(...),
+    symbols: Optional[str] = Form(None)
+):
     try:
         # Step 1: Convert speech to text
         query = voice_agent.speech_to_text(audio.file)
@@ -318,24 +331,28 @@ async def process_query(audio: UploadFile = File(...)):
             query = "What's our risk exposure in technology stocks?"
             logger.info("Using fallback query due to STT failure")
 
-        # Step 2: Extract symbols from query
-        symbols = extract_symbols_from_query(query)
+        # Step 2: Extract symbols from query or use provided symbols
+        if symbols:
+            symbol_list = [s.strip() for s in symbols.split(",")]
+            logger.info(f"Using explicitly provided symbols for voice query: {symbol_list}")
+        else:
+            symbol_list = extract_symbols_from_query(query)
         
         # Step 3: Fetch market data
-        market_data = api_agent.get_market_data(symbols)
+        market_data = api_agent.get_market_data(symbol_list)
         
         if not market_data:
             logger.error("Failed to fetch market data")
             raise HTTPException(status_code=500, detail="Failed to fetch market data")
 
         # Step 4: Scrape news
-        news_urls = [f"https://finance.yahoo.com/quote/{symbol}/news/" for symbol in symbols[:2]]
+        news_urls = [f"https://finance.yahoo.com/quote/{symbol}/news/" for symbol in symbol_list[:2]]
         articles = scraping_agent.scrape_news(news_urls)
         
         if not articles:
             # If scraping failed, use fallback content
             articles = []
-            for symbol in symbols:
+            for symbol in symbol_list:
                 company_name = next((k for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
                 articles.append({
                     "title": f"{company_name.title()} News", 
@@ -355,11 +372,11 @@ async def process_query(audio: UploadFile = File(...)):
                 context = [str(doc) for doc in context_docs]
         
         if not context:
-            context = [f"Analysis of {', '.join(symbols)} stocks"]
+            context = [f"Analysis of {', '.join(symbol_list)} stocks"]
 
         # Update the analysis agent's portfolio to include the queried symbols
         portfolio_weights = {}
-        for i, symbol in enumerate(symbols):
+        for i, symbol in enumerate(symbol_list):
             portfolio_weights[symbol] = 0.15 - (i * 0.02)
             if portfolio_weights[symbol] < 0.05:
                 portfolio_weights[symbol] = 0.05
@@ -373,7 +390,7 @@ async def process_query(audio: UploadFile = File(...)):
             # Fallback exposure data
             exposure = {}
             total_aum = 1000000  # Example AUM
-            for symbol in symbols:
+            for symbol in symbol_list:
                 exposure[symbol] = {
                     'weight': portfolio_weights.get(symbol, 0.10),
                     'value': portfolio_weights.get(symbol, 0.10) * total_aum,
@@ -382,7 +399,7 @@ async def process_query(audio: UploadFile = File(...)):
 
         # Step 7: Get earnings
         earnings = {}
-        for symbol in symbols:
+        for symbol in symbol_list:
             earnings_data = api_agent.get_earnings(symbol)
             if earnings_data is None:
                 earnings_data = pd.DataFrame({
@@ -398,7 +415,7 @@ async def process_query(audio: UploadFile = File(...)):
             logger.error(f"Error generating brief: {str(e)}")
             # Generate a dynamic fallback brief
             symbol_names = []
-            for symbol in symbols:
+            for symbol in symbol_list:
                 company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
                 symbol_names.append(f"{company_name} ({symbol})")
             
