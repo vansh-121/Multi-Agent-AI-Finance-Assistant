@@ -3,15 +3,24 @@ import requests
 import io
 import logging
 import json
+import os
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Determine the API URL based on environment
+# In Streamlit Cloud, both services run in the same environment
+# and can communicate via localhost but on different ports
+API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
 st.title("🧠 Morning Market Brief Assistant")
 st.markdown("""
 This application provides market insights and financial analysis on your portfolio or specific stocks.
 Enter a query about specific stocks or market conditions to get an AI-generated analysis.
 """)
+
+# Display the current API endpoint (useful for debugging)
+st.sidebar.markdown(f"**API Endpoint:** `{API_URL}`")
 
 # Stock selection feature
 st.sidebar.header("Stock Selection")
@@ -45,7 +54,7 @@ if st.button("Get Brief"):
         try:
             # Check if FastAPI is reachable
             try:
-                health_check = requests.get("http://localhost:8000/")
+                health_check = requests.get(f"{API_URL}/")
                 if health_check.status_code != 200:
                     st.error(f"FastAPI server not reachable: {health_check.status_code} - {health_check.text}")
                     logger.error(f"FastAPI health check failed: {health_check.status_code} - {health_check.text}")
@@ -62,7 +71,7 @@ if st.button("Get Brief"):
                         params["symbols"] = ",".join(selected_symbols)
                         st.info(f"Explicitly requesting analysis for: {', '.join(selected_symbols)}")
                     
-                    retrieve_response = requests.get("http://localhost:8000/retrieve/retrieve", params=params)
+                    retrieve_response = requests.get(f"{API_URL}/retrieve/retrieve", params=params)
                     logger.info(f"Retrieve response status: {retrieve_response.status_code}")
                     
                     if retrieve_response.status_code != 200:
@@ -102,7 +111,7 @@ if st.button("Get Brief"):
                             # Step 2: Analyze and get summary
                             st.info("Generating market brief...")
                             analyze_response = requests.post(
-                                "http://localhost:8000/analyze/analyze", 
+                                f"{API_URL}/analyze/analyze", 
                                 json={"data": retrieve_data}
                             )
                             logger.info(f"Analyze response status: {analyze_response.status_code}")
@@ -129,8 +138,8 @@ if st.button("Get Brief"):
                                     st.markdown(analyze_data["summary"])
                                     st.success("Query processed successfully!")
             except requests.exceptions.ConnectionError:
-                st.error("Cannot connect to FastAPI server. Make sure it's running on http://localhost:8000")
-                logger.error("Connection error: Failed to connect to FastAPI server")
+                st.error(f"Cannot connect to FastAPI server at {API_URL}. Make sure it's running.")
+                logger.error(f"Connection error: Failed to connect to FastAPI server at {API_URL}")
         except Exception as e:
             st.error(f"Failed to process query: {str(e)}")
             logger.error(f"Exception in query processing: {str(e)}")
@@ -150,7 +159,7 @@ if audio_file is not None:
             if selected_symbols:
                 data = {"symbols": ",".join(selected_symbols)}
                 
-            response = requests.post("http://localhost:8000/process_query", files=files, data=data, stream=True)
+            response = requests.post(f"{API_URL}/process_query", files=files, data=data, stream=True)
             logger.info(f"Audio process_query response status: {response.status_code}")
             
             if response.status_code == 200:
@@ -166,8 +175,8 @@ if audio_file is not None:
                     st.error(f"Audio processing failed with status {response.status_code}")
                     logger.error(f"Audio processing failed with status {response.status_code}")
         except requests.exceptions.ConnectionError:
-            st.error("Cannot connect to FastAPI server. Make sure it's running on http://localhost:8000")
-            logger.error("Connection error: Failed to connect to FastAPI server")
+            st.error(f"Cannot connect to FastAPI server at {API_URL}. Make sure it's running.")
+            logger.error(f"Connection error: Failed to connect to FastAPI server at {API_URL}")
         except Exception as e:
             st.error(f"Failed to process audio query: {str(e)}")
             logger.error(f"Exception in audio query processing: {str(e)}")
@@ -177,16 +186,19 @@ with st.expander("Troubleshooting"):
     st.write("""
     ### Common issues and solutions:
     
-    1. **FastAPI server not reachable**: Make sure the FastAPI server is running on port 8000 with:
+    1. **FastAPI server not reachable**: Make sure the FastAPI server is running on the right port with:
        ```
        uvicorn orchestrator.orchestrator:app --host 0.0.0.0 --port 8000
        ```
        
-    2. **Internal Server Error (500)**: Check the logs of the FastAPI server for more details.
+    2. **Running in Streamlit Cloud**: Both services must be running. Make sure the FastAPI orchestrator 
+       is started in the Dockerfile or defined in your cloud deployment.
+       
+    3. **Internal Server Error (500)**: Check the logs of the FastAPI server for more details.
     
-    3. **JSON serialization errors**: These often happen with pandas DataFrames. The updated code should handle this.
+    4. **JSON serialization errors**: These often happen with pandas DataFrames. The updated code should handle this.
     
-    4. **Empty or incorrect responses**: The system now has fallback data to ensure you always get a response.
+    5. **Empty or incorrect responses**: The system now has fallback data to ensure you always get a response.
     
-    5. **Stock not recognized**: Try using the ticker symbol directly (e.g., AAPL instead of Apple) in your query.
+    6. **Stock not recognized**: Try using the ticker symbol directly (e.g., AAPL instead of Apple) in your query.
     """)

@@ -1,0 +1,33 @@
+name: Multi-Agent AI Finance Assistant
+description: >
+  A Streamlit-based AI finance assistant that delivers market briefs using a multi-agent architecture.
+sdk: streamlit
+sdk_version: 1.45.0
+python_version: 3.9
+base_image: python:3.9-slim
+
+# Configuration specific to Streamlit Cloud deployment
+build:
+  # Install dependencies before copying app code
+  - pip install -r requirements.txt
+
+# Environment variables required for the app
+env:
+  - name: API_URL
+    value: http://localhost:8000
+
+# Specify services that need to be started
+services:
+  - name: fastapi
+    command: uvicorn orchestrator.orchestrator:app --host 0.0.0.0 --port 8000
+    health_check:
+      url: http://localhost:8000
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  - name: streamlit
+    command: streamlit run streamlit_app/app.py --server.port 8501 --server.address 0.0.0.0
+    port: 8501
+    depends_on:
+      - fastapi
