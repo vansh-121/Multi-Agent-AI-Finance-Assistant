@@ -8,29 +8,10 @@ import os
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Determine the API URL with better fallback logic
-# 1. Check environment variable
-# 2. Check Streamlit secrets (for local development)
-# 3. Fall back to default
-
-# First try environment variable
-API_URL = os.environ.get("API_URL")
-
-# If not found, check Streamlit secrets (for local development)
-if not API_URL:
-    try:
-        API_URL = st.secrets["server"]["API_URL"]
-        logger.info("Using API URL from secrets")
-    except (AttributeError, KeyError):
-        logger.warning("API_URL not found in secrets")
-        API_URL = None
-
-# Final fallback to localhost
-if not API_URL:
-    API_URL = "http://localhost:8000"
-    
-# Log the API URL for debugging
-logger.info(f"Using API URL: {API_URL}")
+# Determine the API URL based on environment
+# In Streamlit Cloud, both services run in the same environment
+# and can communicate via localhost but on different ports
+API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
 st.title("🧠 Morning Market Brief Assistant")
 st.markdown("""
@@ -38,9 +19,8 @@ This application provides market insights and financial analysis on your portfol
 Enter a query about specific stocks or market conditions to get an AI-generated analysis.
 """)
 
-# For debugging - show the API endpoint in the sidebar
-st.sidebar.markdown(f"**API Endpoint:** `{API_URL}`")
-st.sidebar.info("If the endpoint is incorrect, please check your .streamlit/secrets.toml file or environment variables.")
+# Display the current API endpoint (useful for debugging)
+# st.sidebar.markdown(f"**API Endpoint:** `{API_URL}`")
 
 # Stock selection feature
 st.sidebar.header("Stock Selection")
@@ -74,7 +54,6 @@ if st.button("Get Brief"):
         try:
             # Check if FastAPI is reachable
             try:
-                st.info(f"Attempting to connect to FastAPI at {API_URL}")
                 health_check = requests.get(f"{API_URL}/")
                 if health_check.status_code != 200:
                     st.error(f"FastAPI server not reachable: {health_check.status_code} - {health_check.text}")
@@ -159,15 +138,7 @@ if st.button("Get Brief"):
                                     st.markdown(analyze_data["summary"])
                                     st.success("Query processed successfully!")
             except requests.exceptions.ConnectionError:
-                st.error(f"Cannot connect to FastAPI at {API_URL}. The API service may not be running or properly configured.")
-                st.info("Make sure that both services are running. For local development:")
-                st.code("""
-# Terminal 1: Start FastAPI
-uvicorn orchestrator.orchestrator:app --host 0.0.0.0 --port 8000
-
-# Terminal 2: Start Streamlit
-streamlit run streamlit_app/app.py
-                """)
+                st.spinner.error(f"FastAPI server is trying to connect to Render services. If it takes long, try running it locally.")
                 logger.error(f"Connection error: Failed to connect to FastAPI server at {API_URL}")
         except Exception as e:
             st.error(f"Failed to process query: {str(e)}")
@@ -204,7 +175,7 @@ if audio_file is not None:
                     st.error(f"Audio processing failed with status {response.status_code}")
                     logger.error(f"Audio processing failed with status {response.status_code}")
         except requests.exceptions.ConnectionError:
-            st.error(f"Cannot connect to FastAPI at {API_URL}. The API service may not be running or properly configured.")
+            st.spinner.error(f"FastAPI server is trying to connect to Render services. If it takes long, try running it locally.")
             logger.error(f"Connection error: Failed to connect to FastAPI server at {API_URL}")
         except Exception as e:
             st.error(f"Failed to process audio query: {str(e)}")
@@ -215,29 +186,19 @@ with st.expander("Troubleshooting"):
     st.write("""
     ### Common issues and solutions:
     
-    1. **FastAPI server not reachable**: 
-       - Check if the FastAPI service is running
-       - Verify that the API_URL environment variable is set correctly
-       - In cloud deployments, make sure the FastAPI service is properly exposed
+    1. **FastAPI server not reachable**: Make sure the FastAPI server is running on the right port with:
+       ```
+       uvicorn orchestrator.orchestrator:app --host 0.0.0.0 --port 8000
+       ```
        
-    2. **Running in local development**:
-       - Create a `.streamlit/secrets.toml` file with content:
-         ```toml
-         [server]
-         API_URL = "http://localhost:8000"
-         ```
-       - Start FastAPI server: `uvicorn orchestrator.orchestrator:app --host 0.0.0.0 --port 8000`
-       - Start Streamlit app: `streamlit run streamlit_app/app.py`
+    2. **Running in Streamlit Cloud**: Both services must be running. Make sure the FastAPI orchestrator 
+       is started in the Dockerfile or defined in your cloud deployment.
        
-    3. **Running in Docker**:
-       - Use docker-compose: `docker-compose up`
-       - The environment variables will be set automatically
-       
-    4. **Internal Server Error (500)**: Check the logs of the FastAPI server for more details.
+    3. **Internal Server Error (500)**: Check the logs of the FastAPI server for more details.
     
-    5. **JSON serialization errors**: These often happen with pandas DataFrames. The updated code should handle this.
+    4. **JSON serialization errors**: These often happen with pandas DataFrames. The updated code should handle this.
     
-    6. **Empty or incorrect responses**: The system now has fallback data to ensure you always get a response.
+    5. **Empty or incorrect responses**: The system now has fallback data to ensure you always get a response.
     
-    7. **Stock not recognized**: Try using the ticker symbol directly (e.g., AAPL instead of Apple) in your query.
+    6. **Stock not recognized**: Try using the ticker symbol directly (e.g., AAPL instead of Apple) in your query.
     """)
