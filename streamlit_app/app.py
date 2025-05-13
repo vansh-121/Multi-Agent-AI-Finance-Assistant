@@ -20,7 +20,7 @@ Enter a query about specific stocks or market conditions to get an AI-generated 
 """)
 
 # Display the current API endpoint (useful for debugging)
-st.sidebar.markdown(f"**API Endpoint:** `{API_URL}`")
+# st.sidebar.markdown(f"**API Endpoint:** `{API_URL}`")
 
 # Stock selection feature
 st.sidebar.header("Stock Selection")
