@@ -9,9 +9,11 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 # Determine the API URL based on environment
-# In Streamlit Cloud, both services run in the same environment
-# and can communicate via localhost but on different ports
+# For Streamlit Cloud deployment, we need to use the public URL or internal service name
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
+
+# Log the API URL for debugging
+logger.info(f"Using API URL: {API_URL}")
 
 st.title("🧠 Morning Market Brief Assistant")
 st.markdown("""
@@ -19,8 +21,8 @@ This application provides market insights and financial analysis on your portfol
 Enter a query about specific stocks or market conditions to get an AI-generated analysis.
 """)
 
-# Display the current API endpoint (useful for debugging)
-# st.sidebar.markdown(f"**API Endpoint:** `{API_URL}`")
+# For debugging - show the API endpoint in the sidebar
+st.sidebar.markdown(f"**API Endpoint:** `{API_URL}`")
 
 # Stock selection feature
 st.sidebar.header("Stock Selection")
@@ -54,6 +56,7 @@ if st.button("Get Brief"):
         try:
             # Check if FastAPI is reachable
             try:
+                st.info(f"Attempting to connect to FastAPI at {API_URL}")
                 health_check = requests.get(f"{API_URL}/")
                 if health_check.status_code != 200:
                     st.error(f"FastAPI server not reachable: {health_check.status_code} - {health_check.text}")
@@ -138,7 +141,7 @@ if st.button("Get Brief"):
                                     st.markdown(analyze_data["summary"])
                                     st.success("Query processed successfully!")
             except requests.exceptions.ConnectionError:
-                st.error(f"FastAPI server is trying to connect to Render services. If it takes long, try running it locally.")
+                st.error(f"Cannot connect to FastAPI at {API_URL}. The API service may not be running or properly configured.")
                 logger.error(f"Connection error: Failed to connect to FastAPI server at {API_URL}")
         except Exception as e:
             st.error(f"Failed to process query: {str(e)}")
@@ -175,7 +178,7 @@ if audio_file is not None:
                     st.error(f"Audio processing failed with status {response.status_code}")
                     logger.error(f"Audio processing failed with status {response.status_code}")
         except requests.exceptions.ConnectionError:
-            st.error(f"FastAPI server is trying to connect to Render services. If it takes long, try running it locally.")
+            st.error(f"Cannot connect to FastAPI at {API_URL}. The API service may not be running or properly configured.")
             logger.error(f"Connection error: Failed to connect to FastAPI server at {API_URL}")
         except Exception as e:
             st.error(f"Failed to process audio query: {str(e)}")
@@ -186,13 +189,14 @@ with st.expander("Troubleshooting"):
     st.write("""
     ### Common issues and solutions:
     
-    1. **FastAPI server not reachable**: Make sure the FastAPI server is running on the right port with:
-       ```
-       uvicorn orchestrator.orchestrator:app --host 0.0.0.0 --port 8000
-       ```
+    1. **FastAPI server not reachable**: 
+       - Check if the FastAPI service is running
+       - Verify that the API_URL environment variable is set correctly
+       - In cloud deployments, make sure the FastAPI service is properly exposed
        
-    2. **Running in Streamlit Cloud**: Both services must be running. Make sure the FastAPI orchestrator 
-       is started in the Dockerfile or defined in your cloud deployment.
+    2. **Running in Cloud**: Make sure to set the API_URL environment variable to the correct endpoint:
+       - For Streamlit Cloud with combined deployment: Use the service name like "http://fastapi:8000"
+       - For separate deployments: Use the full URL of your FastAPI service
        
     3. **Internal Server Error (500)**: Check the logs of the FastAPI server for more details.
     

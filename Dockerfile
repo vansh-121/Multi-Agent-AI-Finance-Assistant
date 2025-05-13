@@ -5,7 +5,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY . .
 
 # Set environment variable to tell the Streamlit app where to find the API
-ENV API_URL=http://localhost:8000
+# In container environments, FastAPI service will be available at fastapi:8000
+ENV API_URL=http://fastapi:8000
 
 # Expose both ports - FastAPI and Streamlit
 EXPOSE 8000 8501

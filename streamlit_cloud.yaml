@@ -13,8 +13,9 @@ build:
 
 # Environment variables required for the app
 env:
+  # Use service discovery - FastAPI service will be available at http://fastapi:8000
   - name: API_URL
-    value: http://localhost:8000
+    value: http://fastapi:8000
 
 # Specify services that need to be started
 services:
