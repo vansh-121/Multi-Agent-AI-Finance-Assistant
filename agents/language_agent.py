@@ -1,6 +1,5 @@
 from langchain.llms import HuggingFacePipeline
 from langchain.prompts import PromptTemplate
-from transformers import pipeline
 import logging
 
 logging.basicConfig(level=logging.INFO)
