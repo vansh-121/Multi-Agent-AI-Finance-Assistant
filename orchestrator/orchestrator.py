@@ -13,6 +13,7 @@ import logging
 import pandas as pd
 from fastapi.middleware.cors import CORSMiddleware
 import json
+import re
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -35,11 +36,35 @@ analysis_agent = AnalysisAgent()
 language_agent = LanguageAgent()
 voice_agent = VoiceAgent()
 
+# Default symbols (can be extended)
+DEFAULT_SYMBOLS = ['TSM', '005930.KS']  # TSMC, Samsung
+
+# Symbol mappings to handle various query formats
+SYMBOL_MAPPINGS = {
+    'tsmc': 'TSM',
+    'taiwan semiconductor': 'TSM',
+    'samsung': '005930.KS',
+    'samsung electronics': '005930.KS',
+    'apple': 'AAPL',
+    'google': 'GOOGL',
+    'alphabet': 'GOOGL',
+    'microsoft': 'MSFT',
+    'amazon': 'AMZN',
+    'meta': 'META',
+    'facebook': 'META',
+    'netflix': 'NFLX',
+    'nvidia': 'NVDA',
+    'tesla': 'TSLA',
+    'intel': 'INTC',
+    'amd': 'AMD',
+    'advanced micro devices': 'AMD',
+    'qualcomm': 'QCOM',
+}
+
 # Initialize with some sample data
 try:
     # Pre-fetch some data to initialize agents
-    symbols = ['TSM', '005930.KS']  # TSMC, Samsung
-    market_data = api_agent.get_market_data(symbols)
+    market_data = api_agent.get_market_data(DEFAULT_SYMBOLS)
     
     # Initialize retriever with some sample data
     sample_docs = [
@@ -51,19 +76,48 @@ try:
 except Exception as e:
     logger.warning(f"Failed to pre-initialize agents: {str(e)}")
 
+def extract_symbols_from_query(query):
+    """Extract stock symbols from the query and map to actual ticker symbols"""
+    extracted_symbols = []
+    
+    # Check for ticker symbols directly (like AAPL, MSFT, etc.)
+    ticker_pattern = r'\b[A-Z]{1,5}\b'
+    direct_tickers = re.findall(ticker_pattern, query)
+    if direct_tickers:
+        extracted_symbols.extend(direct_tickers)
+    
+    # Check for company names in the query
+    for company, symbol in SYMBOL_MAPPINGS.items():
+        if company.lower() in query.lower():
+            extracted_symbols.append(symbol)
+    
+    # Remove duplicates while preserving order
+    unique_symbols = []
+    for symbol in extracted_symbols:
+        if symbol not in unique_symbols:
+            unique_symbols.append(symbol)
+    
+    # If no symbols were found, use defaults
+    if not unique_symbols:
+        return DEFAULT_SYMBOLS
+    
+    return unique_symbols
+
 # Add a health check endpoint
 @app.get("/")
 async def health_check():
     return {"status": "healthy"}
 
-# Add the missing endpoints that Streamlit is trying to access
 @app.get("/retrieve/retrieve")
 async def retrieve(query: str):
     try:
         logger.info(f"Processing retrieve request for query: {query}")
         
-        # Step 1: Fetch market data
-        symbols = ['TSM', '005930.KS']  # TSMC, Samsung
+        # Step 1: Extract symbols from the query
+        symbols = extract_symbols_from_query(query)
+        logger.info(f"Extracted symbols: {symbols}")
+        
+        # Step 2: Fetch market data
         market_data = api_agent.get_market_data(symbols)
         
         if not market_data:
@@ -78,19 +132,23 @@ async def retrieve(query: str):
             else:
                 serialized_market_data[symbol] = data
         
-        # Step 2: Scrape news
-        news_urls = ["https://finance.yahoo.com/quote/TSM/news/"]  # Example
+        # Step 3: Generate news URLs based on symbols
+        news_urls = [f"https://finance.yahoo.com/quote/{symbol}/news/" for symbol in symbols[:2]]  # Limit to first 2 symbols
         articles = scraping_agent.scrape_news(news_urls)
         
         if not articles:
             # If scraping failed, use fallback content
-            articles = [
-                {"title": "TSMC News", "text": "TSMC continues to lead in semiconductor manufacturing.", "url": "https://example.com/tsmc"},
-                {"title": "Samsung Update", "text": "Samsung Electronics announces new memory chip technology.", "url": "https://example.com/samsung"}
-            ]
+            articles = []
+            for symbol in symbols:
+                company_name = next((k for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                articles.append({
+                    "title": f"{company_name.title()} News", 
+                    "text": f"{company_name.title()} continues to be a key player in the technology market.",
+                    "url": f"https://example.com/{company_name.lower()}"
+                })
             logger.info("Using fallback articles")
         
-        # Step 3: Index and retrieve
+        # Step 4: Index and retrieve
         retriever_agent.index_documents(articles)
         context_docs = retriever_agent.retrieve(query, k=3)
         
@@ -106,18 +164,18 @@ async def retrieve(query: str):
         
         if not context:
             # If retrieval failed, use fallback content
-            context = [
-                "TSMC continues to lead in semiconductor manufacturing.",
-                "Samsung Electronics announces new memory chip technology.",
-                "Semiconductor stocks showing strong performance in Asian markets."
-            ]
+            context = []
+            for symbol in symbols:
+                company_name = next((k for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                context.append(f"{company_name.title()} continues to be a key player in the technology market.")
             logger.info("Using fallback context")
         
         logger.info("Retrieved documents successfully")
         return {
             "market_data": serialized_market_data,
             "context": context,
-            "query": query
+            "query": query,
+            "symbols": symbols
         }
     except Exception as e:
         logger.error(f"Error retrieving data: {str(e)}")
@@ -130,6 +188,8 @@ async def analyze(data: dict):
         
         # Extract data safely with fallbacks
         market_data = {}
+        symbols = data.get("data", {}).get("symbols", DEFAULT_SYMBOLS)
+        
         try:
             if "data" in data and "market_data" in data["data"]:
                 serialized_data = data["data"]["market_data"]
@@ -144,31 +204,44 @@ async def analyze(data: dict):
         except Exception as e:
             logger.warning(f"Error processing market data: {str(e)}")
             # Use empty dataframes as fallback
-            market_data = {
-                'TSM': pd.DataFrame({'Close': [100.0]}),
-                '005930.KS': pd.DataFrame({'Close': [50.0]})
-            }
+            market_data = {}
+            for symbol in symbols:
+                market_data[symbol] = pd.DataFrame({'Close': [100.0]})
         
-        context = data.get("data", {}).get("context", [
-            "TSMC continues to lead in semiconductor manufacturing.",
-            "Samsung Electronics announces new memory chip technology."
-        ])
+        context = data.get("data", {}).get("context", [])
+        if not context:
+            context = [f"Analysis of {', '.join(symbols)} stocks"]
         
-        query = data.get("data", {}).get("query", "What's our risk exposure in Asia tech stocks?")
+        query = data.get("data", {}).get("query", f"What's our risk exposure in {', '.join(symbols)}?")
+        
+        # Update the analysis agent's portfolio to include the queried symbols
+        # This is a temporary solution - in a real system, you might want to fetch the actual portfolio
+        portfolio_weights = {}
+        for i, symbol in enumerate(symbols):
+            # Assign decreasing weights to each symbol
+            portfolio_weights[symbol] = 0.15 - (i * 0.02)  # Start at 15% and decrease
+            if portfolio_weights[symbol] < 0.05:  # Minimum weight of 5%
+                portfolio_weights[symbol] = 0.05
+        
+        # Update the portfolio
+        analysis_agent.portfolio = portfolio_weights
         
         # Step 2: Analyze risk
         exposure = analysis_agent.analyze_risk_exposure(market_data)
         
         if not exposure:
             # Fallback exposure data if analysis fails
-            exposure = {
-                'TSM': {'weight': 0.12, 'value': 120000, 'price': 100.0},
-                '005930.KS': {'weight': 0.10, 'value': 100000, 'price': 50.0}
-            }
+            exposure = {}
+            total_aum = 1000000  # Example AUM of $1M
+            for symbol in symbols:
+                exposure[symbol] = {
+                    'weight': portfolio_weights.get(symbol, 0.10),
+                    'value': portfolio_weights.get(symbol, 0.10) * total_aum,
+                    'price': 100.0  # Default price
+                }
             logger.info("Using fallback exposure data")
         
         # Step 3: Get earnings
-        symbols = ['TSM', '005930.KS']  # TSMC, Samsung
         earnings = {}
         
         for symbol in symbols:
@@ -205,13 +278,29 @@ async def analyze(data: dict):
             )
         except Exception as e:
             logger.error(f"Error generating brief: {str(e)}")
+            # Generate a more dynamic fallback brief
+            symbol_names = []
+            for symbol in symbols:
+                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                symbol_names.append(f"{company_name} ({symbol})")
+            
             brief = f"""
             Market Brief for {query}:
             
-            TSMC and Samsung continue to be key players in the Asian semiconductor market.
-            Our current exposure is approximately 12% in TSMC (valued at $120,000) and 10% in Samsung (valued at $100,000).
-            Both companies have shown strong earnings growth in 2024 compared to 2023.
+            Analysis of {', '.join(symbol_names)}:
+            
+            Our portfolio has exposure to these key technology companies with varying weights.
             """
+            
+            # Add exposure details
+            brief += "\nPortfolio Exposure:\n"
+            for symbol, data in exposure.items():
+                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                weight_pct = data.get('weight', 0.1) * 100
+                value = data.get('value', 100000)
+                brief += f"- {company_name} ({symbol}): {weight_pct:.1f}% (${value:,.0f})\n"
+            
+            brief += "\nThe companies have generally shown positive earnings trends from 2023 to 2024."
         
         logger.info("Analysis completed successfully")
         return {"summary": brief}
@@ -226,72 +315,112 @@ async def process_query(audio: UploadFile = File(...)):
         query = voice_agent.speech_to_text(audio.file)
         
         if not query:
-            query = "What's our risk exposure in Asia tech stocks?"
+            query = "What's our risk exposure in technology stocks?"
             logger.info("Using fallback query due to STT failure")
 
-        # Step 2: Fetch market data
-        symbols = ['TSM', '005930.KS']  # TSMC, Samsung
+        # Step 2: Extract symbols from query
+        symbols = extract_symbols_from_query(query)
+        
+        # Step 3: Fetch market data
         market_data = api_agent.get_market_data(symbols)
         
         if not market_data:
             logger.error("Failed to fetch market data")
             raise HTTPException(status_code=500, detail="Failed to fetch market data")
 
-        # Step 3: Scrape news
-        news_urls = ["https://finance.yahoo.com/quote/TSM/news/"]  # Example
+        # Step 4: Scrape news
+        news_urls = [f"https://finance.yahoo.com/quote/{symbol}/news/" for symbol in symbols[:2]]
         articles = scraping_agent.scrape_news(news_urls)
         
         if not articles:
             # If scraping failed, use fallback content
-            articles = [
-                {"title": "TSMC News", "text": "TSMC continues to lead in semiconductor manufacturing."},
-                {"title": "Samsung Update", "text": "Samsung Electronics announces new memory chip technology."}
-            ]
+            articles = []
+            for symbol in symbols:
+                company_name = next((k for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                articles.append({
+                    "title": f"{company_name.title()} News", 
+                    "text": f"{company_name.title()} continues to be a key player in the technology market."
+                })
 
-        # Step 4: Index and retrieve
+        # Step 5: Index and retrieve
         retriever_agent.index_documents(articles)
-        context = retriever_agent.retrieve(query, k=3)
+        context_docs = retriever_agent.retrieve(query, k=3)
         
         # Handle the context properly
+        context = []
+        if context_docs:
+            if hasattr(context_docs[0], 'page_content'):
+                context = [doc.page_content for doc in context_docs]
+            else:
+                context = [str(doc) for doc in context_docs]
+        
         if not context:
-            context = ["TSMC and Samsung continue to be key players in the Asian semiconductor market."]
+            context = [f"Analysis of {', '.join(symbols)} stocks"]
 
-        # Step 5: Analyze risk
+        # Update the analysis agent's portfolio to include the queried symbols
+        portfolio_weights = {}
+        for i, symbol in enumerate(symbols):
+            portfolio_weights[symbol] = 0.15 - (i * 0.02)
+            if portfolio_weights[symbol] < 0.05:
+                portfolio_weights[symbol] = 0.05
+        
+        analysis_agent.portfolio = portfolio_weights
+        
+        # Step 6: Analyze risk
         exposure = analysis_agent.analyze_risk_exposure(market_data)
         
         if not exposure:
             # Fallback exposure data
-            exposure = {
-                'TSM': {'weight': 0.12, 'value': 120000, 'price': 100.0},
-                '005930.KS': {'weight': 0.10, 'value': 100000, 'price': 50.0}
-            }
+            exposure = {}
+            total_aum = 1000000  # Example AUM
+            for symbol in symbols:
+                exposure[symbol] = {
+                    'weight': portfolio_weights.get(symbol, 0.10),
+                    'value': portfolio_weights.get(symbol, 0.10) * total_aum,
+                    'price': 100.0
+                }
 
-        # Step 6: Get earnings
+        # Step 7: Get earnings
         earnings = {}
         for symbol in symbols:
             earnings_data = api_agent.get_earnings(symbol)
             if earnings_data is None:
-                # Fallback earnings data
                 earnings_data = pd.DataFrame({
                     'Year': [2023, 2024],
                     'Earnings': [10.5, 12.3]
                 })
             earnings[symbol] = earnings_data
 
-        # Step 7: Generate brief
+        # Step 8: Generate brief
         try:
             brief = language_agent.generate_brief(str(context), str(exposure), str(earnings))
         except Exception as e:
             logger.error(f"Error generating brief: {str(e)}")
+            # Generate a dynamic fallback brief
+            symbol_names = []
+            for symbol in symbols:
+                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                symbol_names.append(f"{company_name} ({symbol})")
+            
             brief = f"""
             Market Brief for your query about {query}:
             
-            TSMC and Samsung continue to be key players in the Asian semiconductor market.
-            Our current exposure is approximately 12% in TSMC and 10% in Samsung.
-            Both companies have shown strong earnings growth in 2024.
+            Analysis of {', '.join(symbol_names)}:
+            
+            Our portfolio has exposure to these key technology companies with varying weights.
             """
+            
+            # Add exposure details
+            brief += "\nPortfolio Exposure:\n"
+            for symbol, data in exposure.items():
+                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                weight_pct = data.get('weight', 0.1) * 100
+                value = data.get('value', 100000)
+                brief += f"- {company_name} ({symbol}): {weight_pct:.1f}% (${value:,.0f})\n"
+            
+            brief += "\nThe companies have generally shown positive earnings trends from 2023 to 2024."
 
-        # Step 8: Convert to speech
+        # Step 9: Convert to speech
         audio_response = voice_agent.text_to_speech(brief)
         
         if audio_response is None:

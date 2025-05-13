@@ -8,9 +8,35 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 st.title("🧠 Morning Market Brief Assistant")
+st.markdown("""
+This application provides market insights and financial analysis on your portfolio or specific stocks.
+Enter a query about specific stocks or market conditions to get an AI-generated analysis.
+""")
 
-# Text query input
-query = st.text_input("Ask something:", "What's our risk exposure in Asia tech stocks today?")
+# Stock selection feature
+st.sidebar.header("Stock Selection")
+st.sidebar.markdown("Enter stock symbols or company names in your query, or select from common stocks:")
+
+# Common stocks for quick selection
+common_stocks = {
+    "Technology": ["AAPL (Apple)", "MSFT (Microsoft)", "GOOGL (Google)", "AMZN (Amazon)", "META (Facebook)"],
+    "Semiconductors": ["TSM (TSMC)", "NVDA (NVIDIA)", "INTC (Intel)", "AMD (AMD)", "005930.KS (Samsung)"],
+    "EVs": ["TSLA (Tesla)", "RIVN (Rivian)", "NIO (NIO)"],
+    "Finance": ["JPM (JP Morgan)", "BAC (Bank of America)", "GS (Goldman Sachs)"]
+}
+
+selected_category = st.sidebar.selectbox("Industry Sector", list(common_stocks.keys()))
+selected_stocks = st.sidebar.multiselect("Select stocks", common_stocks[selected_category])
+
+# Prepare query with selected stocks
+stock_query = ""
+if selected_stocks:
+    stock_symbols = [stock.split(" ")[0] for stock in selected_stocks]
+    stock_query = f"What's our risk exposure in {', '.join(stock_symbols)}?"
+
+# Text query input with default that includes selected stocks
+query = st.text_input("Ask something:", 
+                     value=stock_query if stock_query else "What's our risk exposure in tech stocks today?")
 
 if st.button("Get Brief"):
     with st.spinner("Processing query..."):
@@ -49,6 +75,11 @@ if st.button("Get Brief"):
                             st.error(f"Retrieval error: {retrieve_data['error']}")
                             logger.error(f"Retrieval error: {retrieve_data['error']}")
                         else:
+                            # Display the analyzed stocks
+                            symbols = retrieve_data.get("symbols", [])
+                            if symbols:
+                                st.info(f"Analyzing stocks: {', '.join(symbols)}")
+                            
                             # Display some retrieved data for verification
                             with st.expander("View retrieved data"):
                                 st.write("Query:", retrieve_data.get("query"))
@@ -82,7 +113,7 @@ if st.button("Get Brief"):
                                     logger.error(f"Analysis error: {analyze_data['error']}")
                                 else:
                                     st.subheader("Market Brief:")
-                                    st.write(analyze_data["summary"])
+                                    st.markdown(analyze_data["summary"])
                                     st.success("Query processed successfully!")
             except requests.exceptions.ConnectionError:
                 st.error("Cannot connect to FastAPI server. Make sure it's running on http://localhost:8000")
@@ -137,4 +168,6 @@ with st.expander("Troubleshooting"):
     3. **JSON serialization errors**: These often happen with pandas DataFrames. The updated code should handle this.
     
     4. **Empty or incorrect responses**: The system now has fallback data to ensure you always get a response.
+    
+    5. **Stock not recognized**: Try using the ticker symbol directly (e.g., AAPL instead of Apple) in your query.
     """)
