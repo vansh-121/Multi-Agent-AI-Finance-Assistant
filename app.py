@@ -29,6 +29,9 @@ from agents.analysis_agent import AnalysisAgent
 from agents.language_agent import LanguageAgent 
 from agents.voice_agent import VoiceAgent
 
+# Import comprehensive stock symbols
+from streamlit_app.stock_symbols import ALL_STOCKS, CATEGORIES
+
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -52,10 +55,11 @@ language_agent = LanguageAgent()
 voice_agent = VoiceAgent()
 
 # Default symbols (can be extended)
-DEFAULT_SYMBOLS = ['TSM', '005930.KS']  # TSMC, Samsung
+DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'GOOGL']  # Major tech stocks
 
-# Symbol mappings to handle various query formats
+# Enhanced symbol mappings to handle various query formats
 SYMBOL_MAPPINGS = {
+    # Tech Giants
     'tsmc': 'TSM',
     'taiwan semiconductor': 'TSM',
     'samsung': '005930.KS',
@@ -74,6 +78,37 @@ SYMBOL_MAPPINGS = {
     'amd': 'AMD',
     'advanced micro devices': 'AMD',
     'qualcomm': 'QCOM',
+    
+    # Additional major companies
+    'disney': 'DIS',
+    'nike': 'NKE',
+    'walmart': 'WMT',
+    'jpmorgan': 'JPM',
+    'jp morgan': 'JPM',
+    'bank of america': 'BAC',
+    'goldman sachs': 'GS',
+    'visa': 'V',
+    'mastercard': 'MA',
+    'coca cola': 'KO',
+    'pepsi': 'PEP',
+    'mcdonalds': 'MCD',
+    'starbucks': 'SBUX',
+    'boeing': 'BA',
+    'pfizer': 'PFE',
+    'johnson & johnson': 'JNJ',
+    'exxon': 'XOM',
+    'chevron': 'CVX',
+    
+    # Crypto
+    'bitcoin': 'BTC-USD',
+    'ethereum': 'ETH-USD',
+    'dogecoin': 'DOGE-USD',
+    
+    # Indices
+    's&p 500': '^GSPC',
+    'sp500': '^GSPC',
+    'dow jones': '^DJI',
+    'nasdaq': '^IXIC',
 }
 
 # Helper functions
@@ -142,12 +177,23 @@ async def retrieve(
             symbol_list = extract_symbols_from_query(query)
             logger.info(f"Extracted symbols from query: {symbol_list}")
         
-        # Step 2: Fetch market data
+        # Step 2: Validate and fetch market data
+        if not symbol_list:
+            logger.warning("No symbols found, using defaults")
+            symbol_list = DEFAULT_SYMBOLS
+        
+        logger.info(f"Fetching market data for: {symbol_list}")
         market_data = api_agent.get_market_data(symbol_list)
         
         if not market_data:
-            logger.error("Failed to fetch market data for symbols: " + str(symbol_list))
-            raise HTTPException(status_code=500, detail=f"Failed to fetch market data for symbols: {symbol_list}")
+            logger.error(f"Failed to fetch market data for symbols: {symbol_list}")
+            # Return helpful error message
+            return {
+                "error": f"Could not fetch data for symbols: {', '.join(symbol_list)}. Please check if the symbols are valid Yahoo Finance tickers.",
+                "query": query,
+                "attempted_symbols": symbol_list,
+                "suggestion": "Try using common symbols like AAPL, MSFT, GOOGL, or check Yahoo Finance for the correct ticker."
+            }
         
         # Convert market data to a serializable format using the agent's method
         logger.info(f"Serializing market data for {list(market_data.keys())}")
@@ -169,7 +215,7 @@ async def retrieve(
             logger.warning("News scraping failed, using fallback articles")
             articles = []
             for symbol in symbol_list:
-                company_name = next((k for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
                 
                 # Try to include some data from market_data in the fallback
                 article_text = f"{company_name.title()} continues to be a key player in the market. "
@@ -211,7 +257,7 @@ async def retrieve(
             logger.warning("Document retrieval failed, using fallback context")
             context = []
             for symbol in symbol_list:
-                company_name = next((k for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
                 context_text = f"{company_name.title()} market data has been retrieved. "
                 
                 if symbol in serialized_market_data and serialized_market_data[symbol]:
@@ -370,7 +416,7 @@ async def analyze(data: dict):
             # Generate a more dynamic fallback brief
             symbol_names = []
             for symbol in symbols:
-                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
                 symbol_names.append(f"{company_name} ({symbol})")
             
             brief = f"""## Market Brief: {query}
@@ -389,7 +435,7 @@ Our analysis focuses on exposure to the following securities in our portfolio.
             # Add exposure details
             total_value = sum([d.get('value', 100000) for d in exposure.values()])
             for symbol, exp_data in exposure.items():
-                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
                 weight_pct = exp_data.get('weight', 0.1) * 100
                 value = exp_data.get('value', 100000)
                 price = exp_data.get('price', 100.0)
@@ -407,7 +453,7 @@ The portfolio maintains a diversified exposure across the analyzed securities. R
 """
             
             for symbol in symbols:
-                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
                 brief += f"\n- {company_name}: Latest earnings data retrieved"
             
             brief += "\n\nRecommendation: Monitor these positions according to your risk tolerance and investment objectives."
@@ -453,10 +499,10 @@ async def process_query(
             # If scraping failed, use fallback content
             articles = []
             for symbol in symbol_list:
-                company_name = next((k for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
                 articles.append({
-                    "title": f"{company_name.title()} News", 
-                    "text": f"{company_name.title()} continues to be a key player in the technology market."
+                    "title": f"{company_name} News", 
+                    "text": f"{company_name} continues to be a key player in the technology market."
                 })
 
         # Step 5: Index and retrieve
@@ -516,7 +562,7 @@ async def process_query(
             # Generate a dynamic fallback brief
             symbol_names = []
             for symbol in symbol_list:
-                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
                 symbol_names.append(f"{company_name} ({symbol})")
             
             brief = f"""
@@ -530,7 +576,7 @@ async def process_query(
             # Add exposure details
             brief += "\nPortfolio Exposure:\n"
             for symbol, data in exposure.items():
-                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
                 weight_pct = data.get('weight', 0.1) * 100
                 value = data.get('value', 100000)
                 brief += f"- {company_name} ({symbol}): {weight_pct:.1f}% (${value:,.0f})\n"
@@ -567,18 +613,87 @@ def main():
     
     # Stock selection feature
     st.sidebar.header("Stock Selection")
-    st.sidebar.markdown("Enter stock symbols or company names in your query, or select from common stocks:")
+    st.sidebar.markdown("Select from all available stocks or enter custom symbols:")
     
-    # Common stocks for quick selection
-    common_stocks = {
-        "Technology": ["AAPL (Apple)", "MSFT (Microsoft)", "GOOGL (Google)", "AMZN (Amazon)", "META (Facebook)"],
-        "Semiconductors": ["TSM (TSMC)", "NVDA (NVIDIA)", "INTC (Intel)", "AMD (AMD)", "005930.KS (Samsung)"],
-        "EVs": ["TSLA (Tesla)", "RIVN (Rivian)", "NIO (NIO)"],
-        "Finance": ["JPM (JP Morgan)", "BAC (Bank of America)", "GS (Goldman Sachs)"]
-    }
+    # Build comprehensive stocks list from ALL_STOCKS
+    # Add "All Stocks" category + pre-defined categories
+    common_stocks = {"🔷 All Stocks (A-Z)": []}
+    
+    # Add all stocks to the "All Stocks" category
+    for symbol, name in sorted(ALL_STOCKS.items()):
+        display_name = f"{symbol} ({name})"
+        common_stocks["🔷 All Stocks (A-Z)"].append(display_name)
+    
+    # Add pre-defined categories from stock_symbols.py
+    for category_name, symbols in CATEGORIES.items():
+        common_stocks[category_name] = []
+        for symbol in symbols:
+            if symbol in ALL_STOCKS:
+                display_name = f"{symbol} ({ALL_STOCKS[symbol]})"
+                common_stocks[category_name].append(display_name)
+    
+    # Remove empty categories
+    common_stocks = {k: v for k, v in common_stocks.items() if v}
+    
+    st.sidebar.info(f"📊 Total available stocks: {len(ALL_STOCKS)}")
     
     selected_category = st.sidebar.selectbox("Industry Sector", list(common_stocks.keys()))
-    selected_stocks = st.sidebar.multiselect("Select stocks", common_stocks[selected_category])
+    
+    # Add search functionality
+    search_term = st.sidebar.text_input("🔍 Search stocks", placeholder="Type company name or symbol...")
+    
+    # Filter stocks based on search
+    available_stocks = common_stocks[selected_category]
+    if search_term:
+        available_stocks = [s for s in available_stocks if search_term.upper() in s.upper()]
+        st.sidebar.caption(f"Found {len(available_stocks)} matches")
+    
+    selected_stocks = st.sidebar.multiselect(
+        "Select stocks to analyze", 
+        available_stocks,
+        help="Choose one or more stocks from the selected sector"
+    )
+    
+    # Show all available symbols in an expander
+    with st.sidebar.expander("📋 View All Available Symbols"):
+        st.markdown(f"### All {len(ALL_STOCKS)} Available Stocks")
+        
+        # Group symbols alphabetically
+        all_symbols = sorted(ALL_STOCKS.keys())
+        
+        # Display in columns for better readability
+        col1, col2 = st.columns(2)
+        mid_point = len(all_symbols) // 2
+        
+        with col1:
+            st.code("\n".join(all_symbols[:mid_point]))
+        with col2:
+            st.code("\n".join(all_symbols[mid_point:]))
+        
+        st.markdown("---")
+        st.markdown("### Symbol → Company Name Mapping")
+        st.caption("Browse alphabetically organized mappings below")
+        
+        # Show mapping organized by first letter (without nested expanders)
+        letters = {}
+        for symbol, company in sorted(ALL_STOCKS.items()):
+            first_letter = symbol[0].upper()
+            if first_letter not in letters:
+                letters[first_letter] = []
+            letters[first_letter].append(f"{symbol} → {company}")
+        
+        # Display all mappings grouped by letter in a scrollable text area
+        mapping_text = ""
+        for letter in sorted(letters.keys()):
+            mapping_text += f"\n━━━ {letter} ({len(letters[letter])} stocks) ━━━\n"
+            for mapping in letters[letter]:
+                mapping_text += f"{mapping}\n"
+        
+        st.text_area("All Stock Mappings (A-Z)", mapping_text, height=300, help="Scroll to view all symbol to company name mappings")
+        
+        st.markdown("---")
+        st.markdown("### Custom Symbol Entry")
+        st.info("💡 You can also type any valid Yahoo Finance ticker symbol directly in your query (e.g., AAPL, MSFT, TSM, BTC-USD)")
     
     # Prepare query with selected stocks
     stock_query = ""

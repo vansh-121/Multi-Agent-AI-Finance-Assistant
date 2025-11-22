@@ -4,6 +4,7 @@ import io
 import logging
 import json
 import os
+from stock_symbols import ALL_STOCKS, CATEGORIES, get_stock_display_name, search_stocks
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -13,41 +14,159 @@ logger = logging.getLogger(__name__)
 # and can communicate via localhost but on different ports
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
-st.title("🧠 Morning Market Brief Assistant")
+st.title("🧠 Multi-Market Finance Assistant")
 st.markdown("""
-This application provides market insights and financial analysis on your portfolio or specific stocks.
-Enter a query about specific stocks or market conditions to get an AI-generated analysis.
+**Professional market insights powered by AI - covering 450+ global stocks!**
+
+Get comprehensive financial analysis on any stock from major exchanges worldwide:
+🇺🇸 US Markets | 🌏 Asian Markets | 🌍 European Markets | 📊 ETFs | ₿ Crypto
+
+Select stocks from the sidebar and ask your question below!
 """)
 
 # Display the current API endpoint (useful for debugging)
 # st.sidebar.markdown(f"**API Endpoint:** `{API_URL}`")
 
 # Stock selection feature
-st.sidebar.header("Stock Selection")
-st.sidebar.markdown("Enter stock symbols or company names in your query, or select from common stocks:")
+st.sidebar.header("📈 Stock Selection")
+st.sidebar.markdown("**Select from 400+ global stocks, ETFs, and crypto!**")
 
-# Common stocks for quick selection
-common_stocks = {
-    "Technology": ["AAPL (Apple)", "MSFT (Microsoft)", "GOOGL (Google)", "AMZN (Amazon)", "META (Facebook)"],
-    "Semiconductors": ["TSM (TSMC)", "NVDA (NVIDIA)", "INTC (Intel)", "AMD (AMD)", "005930.KS (Samsung)"],
-    "EVs": ["TSLA (Tesla)", "RIVN (Rivian)", "NIO (NIO)"],
-    "Finance": ["JPM (JP Morgan)", "BAC (Bank of America)", "GS (Goldman Sachs)"]
-}
+# Selection method
+selection_method = st.sidebar.radio(
+    "Choose selection method:",
+    ["Browse by Category", "Search by Name/Symbol", "Enter Custom Symbol"]
+)
 
-selected_category = st.sidebar.selectbox("Industry Sector", list(common_stocks.keys()))
-selected_stocks = st.sidebar.multiselect("Select stocks", common_stocks[selected_category])
-
-# Prepare query with selected stocks
-stock_query = ""
+selected_stocks = []
 selected_symbols = []
-if selected_stocks:
-    # Extract just the symbol part (before the space)
-    selected_symbols = [stock.split(" ")[0] for stock in selected_stocks]
-    stock_query = f"What's our risk exposure in {', '.join(selected_symbols)}?"
+
+if selection_method == "Browse by Category":
+    # Category-based selection
+    selected_category = st.sidebar.selectbox("Select Category", list(CATEGORIES.keys()))
+    
+    # Get stocks for this category
+    category_stocks = CATEGORIES[selected_category]
+    stock_options = [get_stock_display_name(symbol) for symbol in category_stocks]
+    
+    selected_stocks = st.sidebar.multiselect(
+        f"Select stocks from {selected_category}",
+        stock_options,
+        help="Select one or more stocks to analyze"
+    )
+    
+    # Extract symbols
+    selected_symbols = [stock.split(" - ")[0] for stock in selected_stocks]
+
+elif selection_method == "Search by Name/Symbol":
+    # Search-based selection
+    search_query = st.sidebar.text_input(
+        "🔍 Search stocks",
+        placeholder="Type company name or symbol (e.g., Apple, MSFT, Tesla...)",
+        help="Search across 400+ stocks"
+    )
+    
+    if search_query:
+        search_results = search_stocks(search_query)
+        
+        if search_results:
+            st.sidebar.success(f"Found {len(search_results)} matches!")
+            
+            # Show results as a selectbox
+            result_options = [f"{symbol} - {name}" for symbol, name in search_results[:20]]  # Limit to 20 results
+            
+            selected_stocks = st.sidebar.multiselect(
+                "Select from search results",
+                result_options,
+                help="Select one or more stocks"
+            )
+            
+            # Extract symbols
+            selected_symbols = [stock.split(" - ")[0] for stock in selected_stocks]
+        else:
+            st.sidebar.warning("No stocks found. Try a different search term.")
+            
+elif selection_method == "Enter Custom Symbol":
+    # Manual entry for any stock
+    st.sidebar.info("💡 Enter any Yahoo Finance ticker symbol")
+    custom_symbols_input = st.sidebar.text_input(
+        "Enter symbol(s)",
+        placeholder="e.g., AAPL, MSFT, TSM",
+        help="Enter one or multiple symbols separated by commas"
+    )
+    
+    if custom_symbols_input:
+        # Parse comma-separated symbols
+        selected_symbols = [s.strip().upper() for s in custom_symbols_input.split(",") if s.strip()]
+        selected_stocks = [get_stock_display_name(symbol) for symbol in selected_symbols]
+        
+        st.sidebar.success(f"Selected: {', '.join(selected_symbols)}")
+
+# Display selected stocks with details
+if selected_symbols:
+    st.sidebar.markdown("### ✅ Selected Stocks:")
+    for symbol in selected_symbols:
+        company_name = ALL_STOCKS.get(symbol, "Custom Symbol")
+        if company_name != "Custom Symbol":
+            st.sidebar.text(f"• {symbol} - {company_name}")
+        else:
+            st.sidebar.text(f"• {symbol}")
+    
+    st.sidebar.markdown(f"**Total: {len(selected_symbols)} stock(s)**")
+    
+    # Prepare query with selected stocks
+    stock_query = f"Analyze {', '.join(selected_symbols)}. What's the current market situation and risk exposure?"
+else:
+    stock_query = ""
+    st.sidebar.info("👆 Select stocks above to analyze")
+
+# Show available stock count
+st.sidebar.markdown("---")
+st.sidebar.markdown(f"**📊 Database: 450+ stocks available**")
+st.sidebar.caption("248 US | 49 Asian | 40 European | 98 ETFs | 20 Crypto")
+
+# Quick reference guide
+with st.sidebar.expander("📖 Symbol Format Guide"):
+    st.markdown("""
+    **Stock Symbol Formats:**
+    - 🇺🇸 US: `AAPL`, `MSFT`, `GOOGL`
+    - 🇰🇷 Korea: `005930.KS` (Samsung)
+    - 🇯🇵 Japan: `7203.T` (Toyota)
+    - 🇨🇳 Hong Kong: `0700.HK` (Tencent)
+    - 🇮🇳 India: `RELIANCE.NS`
+    - 🇬🇧 UK: `BP.L`
+    - 🇩🇪 Germany: `SAP.DE`
+    - 🇫🇷 France: `MC.PA`
+    - 🇨🇭 Switzerland: `NESN.SW`
+    - 🇨🇦 Canada: `SHOP.TO`
+    - 🇦🇺 Australia: `CBA.AX`
+    - ₿ Crypto: `BTC-USD`, `ETH-USD`
+    
+    **Tips:**
+    - Most US stocks use simple tickers
+    - International stocks have country suffixes
+    - Search by company name if unsure
+    """)
 
 # Text query input with default that includes selected stocks
-query = st.text_input("Ask something:", 
-                     value=stock_query if stock_query else "What's our risk exposure in tech stocks today?")
+st.markdown("### 💬 Ask Your Question")
+
+# Example queries
+with st.expander("💡 Example Questions"):
+    st.markdown("""
+    - "Analyze AAPL, MSFT, and GOOGL. What's the market trend?"
+    - "Compare Samsung (005930.KS) and TSMC performance"
+    - "What's the risk exposure in my crypto portfolio? BTC-USD, ETH-USD"
+    - "How are European tech stocks performing? SAP.DE, ASML"
+    - "Give me a market brief on SPY and QQQ ETFs"
+    - "Analyze Tesla vs traditional auto makers"
+    - "What's happening with semiconductor stocks?"
+    """)
+
+query = st.text_input(
+    "Enter your market analysis question:", 
+    value=stock_query if stock_query else "What's our risk exposure in tech stocks today?",
+    help="Ask about specific stocks, market trends, or portfolio risk"
+)
 
 if st.button("Get Brief"):
     with st.spinner("Processing query..."):
@@ -90,8 +209,24 @@ if st.button("Get Brief"):
                         logger.info(f"Retrieved data successfully")
                         
                         if "error" in retrieve_data:
-                            st.error(f"Retrieval error: {retrieve_data['error']}")
+                            st.error(f"❌ {retrieve_data['error']}")
                             logger.error(f"Retrieval error: {retrieve_data['error']}")
+                            
+                            # Show helpful suggestions
+                            if "attempted_symbols" in retrieve_data:
+                                st.warning(f"Failed symbols: {', '.join(retrieve_data['attempted_symbols'])}")
+                            if "suggestion" in retrieve_data:
+                                st.info(f"💡 {retrieve_data['suggestion']}")
+                            
+                            # Show example valid symbols
+                            st.markdown("### Valid Symbol Examples:")
+                            st.markdown("""
+                            - **US Tech:** AAPL, MSFT, GOOGL, AMZN, TSLA, NVDA
+                            - **Finance:** JPM, BAC, V, MA, GS
+                            - **Asian:** TSM, 005930.KS, 0700.HK, RELIANCE.NS
+                            - **Crypto:** BTC-USD, ETH-USD, SOL-USD
+                            - **ETFs:** SPY, QQQ, VOO
+                            """)
                         else:
                             # If we have selected symbols, make sure they're in the data
                             if selected_symbols:
