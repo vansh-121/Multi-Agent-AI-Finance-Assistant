@@ -493,17 +493,35 @@ async def process_query(
 
         # Step 4: Scrape news
         news_urls = [f"https://finance.yahoo.com/quote/{symbol}/news/" for symbol in symbol_list[:2]]
+        logger.info(f"Scraping news from URLs: {news_urls}")
         articles = scraping_agent.scrape_news(news_urls)
         
         if not articles:
-            # If scraping failed, use fallback content
+            # If scraping failed, use fallback content based on actual market data
+            logger.warning("News scraping failed, using fallback articles")
             articles = []
             for symbol in symbol_list:
                 company_name = ALL_STOCKS.get(symbol, symbol)
+                
+                # Try to include some data from market_data in the fallback
+                article_text = f"{company_name} continues to be a key player in the market. "
+                
+                if symbol in market_data:
+                    try:
+                        market_df = market_data[symbol]
+                        if not market_df.empty:
+                            latest_close = market_df['Close'].iloc[-1] if 'Close' in market_df.columns else 'N/A'
+                            article_text += f"Latest closing price: {latest_close}. "
+                    except:
+                        pass
+                
                 articles.append({
-                    "title": f"{company_name} News", 
-                    "text": f"{company_name} continues to be a key player in the technology market."
+                    "title": f"{company_name} Market Update", 
+                    "text": article_text,
+                    "url": f"https://finance.yahoo.com/quote/{symbol}"
                 })
+        else:
+            logger.info(f"Successfully scraped {len(articles)} articles")
 
         # Step 5: Index and retrieve
         retriever_agent.index_documents(articles)
@@ -695,6 +713,29 @@ def main():
         st.markdown("### Custom Symbol Entry")
         st.info("💡 You can also type any valid Yahoo Finance ticker symbol directly in your query (e.g., AAPL, MSFT, TSM, BTC-USD)")
     
+    # Quick reference guide for symbol formats
+    with st.sidebar.expander("📖 Symbol Format Guide"):
+        st.markdown("""
+        **Stock Symbol Formats:**
+        - 🇺🇸 US: `AAPL`, `MSFT`, `GOOGL`
+        - 🇰🇷 Korea: `005930.KS` (Samsung)
+        - 🇯🇵 Japan: `7203.T` (Toyota)
+        - 🇨🇳 Hong Kong: `0700.HK` (Tencent)
+        - 🇮🇳 India: `RELIANCE.NS`
+        - 🇬🇧 UK: `BP.L`
+        - 🇩🇪 Germany: `SAP.DE`
+        - 🇫🇷 France: `MC.PA`
+        - 🇨🇭 Switzerland: `NESN.SW`
+        - 🇨🇦 Canada: `SHOP.TO`
+        - 🇦🇺 Australia: `CBA.AX`
+        - ₿ Crypto: `BTC-USD`, `ETH-USD`
+        
+        **Tips:**
+        - Most US stocks use simple tickers
+        - International stocks have country suffixes
+        - Search by company name if unsure
+        """)
+    
     # Prepare query with selected stocks
     stock_query = ""
     selected_symbols = []
@@ -703,9 +744,41 @@ def main():
         selected_symbols = [stock.split(" ")[0] for stock in selected_stocks]
         stock_query = f"What's our risk exposure in {', '.join(selected_symbols)}?"
     
+    # Example queries section
+    st.markdown("### 💬 Ask Your Question")
+    
+    with st.expander("💡 Example Questions"):
+        st.markdown("""
+        **General Market Analysis:**
+        - "Analyze AAPL, MSFT, and GOOGL. What's the market trend?"
+        - "What's our risk exposure in tech stocks today?"
+        - "Give me a market brief on SPY and QQQ ETFs"
+        
+        **International Markets:**
+        - "Compare Samsung (005930.KS) and TSMC performance"
+        - "How are European tech stocks performing? SAP.DE, ASML"
+        - "Analyze Japanese auto makers: 7203.T (Toyota), HMC"
+        - "What's happening with Indian IT stocks? TCS.NS, INFY.NS"
+        
+        **Sector Analysis:**
+        - "What's happening with semiconductor stocks? NVDA, AMD, TSM"
+        - "Analyze Tesla vs traditional auto makers"
+        - "How are cloud software companies performing?"
+        
+        **Cryptocurrency:**
+        - "What's the risk exposure in my crypto portfolio? BTC-USD, ETH-USD"
+        - "Compare Bitcoin and Ethereum performance"
+        
+        **Portfolio Risk:**
+        - "What's my exposure to the top 5 tech stocks?"
+        - "Analyze risk across my diverse portfolio"
+        - "Should I rebalance based on current market conditions?"
+        """)
+    
     # Text query input with default that includes selected stocks
-    query = st.text_input("Ask something:", 
-                         value=stock_query if stock_query else "What's our risk exposure in tech stocks today?")
+    query = st.text_input("Enter your market analysis question:", 
+                         value=stock_query if stock_query else "What's our risk exposure in tech stocks today?",
+                         help="Ask about specific stocks, market trends, or portfolio risk")
     
     if st.button("Get Brief"):
         with st.spinner("Processing query..."):

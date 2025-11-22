@@ -14,9 +14,9 @@ logger = logging.getLogger(__name__)
 # and can communicate via localhost but on different ports
 API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
-st.title("🧠 Multi-Market Finance Assistant")
+st.title("🧠 Morning Market Brief Assistant")
 st.markdown("""
-**Professional market insights powered by AI - covering 450+ global stocks!**
+**Professional market insights powered by AI - covering 460+ global stocks!**
 
 Get comprehensive financial analysis on any stock from major exchanges worldwide:
 🇺🇸 US Markets | 🌏 Asian Markets | 🌍 European Markets | 📊 ETFs | ₿ Crypto
@@ -121,7 +121,7 @@ else:
 
 # Show available stock count
 st.sidebar.markdown("---")
-st.sidebar.markdown(f"**📊 Database: 450+ stocks available**")
+st.sidebar.info(f"📊 Total available stocks: {len(ALL_STOCKS)}")
 st.sidebar.caption("248 US | 49 Asian | 40 European | 98 ETFs | 20 Crypto")
 
 # Quick reference guide
@@ -316,8 +316,57 @@ if audio_file is not None:
             st.error(f"Failed to process audio query: {str(e)}")
             logger.error(f"Exception in audio query processing: {str(e)}")
 
+# Add a section to explain how the application works
+with st.expander("ℹ️ How this application works"):
+    st.write("""
+    ### Architecture
+    
+    This application uses a **separated frontend-backend architecture**:
+    
+    1. **Streamlit Frontend** (This interface):
+       - User-friendly interface for stock selection and queries
+       - Communicates with the FastAPI backend via REST API
+       - Displays analysis results and market briefs
+    
+    2. **FastAPI Backend** (Orchestrator):
+       - Runs independently on port 8000
+       - Orchestrates multiple AI agents for data processing
+       - Handles API requests from the frontend
+    
+    3. **AI Agents**:
+       - **API Agent**: Fetches market data via yfinance
+       - **Scraping Agent**: Crawls news using newspaper3k  
+       - **Retriever Agent**: Indexes and retrieves relevant data
+       - **Analysis Agent**: Calculates portfolio risk exposure
+       - **Language Agent**: Generates comprehensive narratives
+       - **Voice Agent**: Handles speech-to-text and text-to-speech
+    
+    ### Data Flow:
+    
+    ```
+    User Query → Streamlit → FastAPI Backend → AI Agents → Analysis → Response → Streamlit → User
+    ```
+    
+    ### Features:
+    
+    - ✅ **460+ Global Stocks**: US, Asia, Europe, Canada, Australia
+    - ✅ **ETFs & Indices**: SPY, QQQ, S&P 500, NASDAQ, and more
+    - ✅ **Cryptocurrencies**: Bitcoin, Ethereum, and major altcoins
+    - ✅ **Real-time Data**: Via Yahoo Finance API
+    - ✅ **News Analysis**: Scrapes and analyzes market news
+    - ✅ **Risk Assessment**: Portfolio exposure analysis
+    - ✅ **AI-Powered Briefs**: Comprehensive market narratives
+    
+    When you ask a question, the system:
+    1. Fetches real-time market data
+    2. Retrieves relevant news articles
+    3. Calculates portfolio risk and exposure
+    4. Generates earnings analysis
+    5. Creates a comprehensive market brief
+    """)
+
 # Add a section to explain how to debug the application
-with st.expander("Troubleshooting"):
+with st.expander("🔧 Troubleshooting"):
     st.write("""
     ### Common issues and solutions:
     
