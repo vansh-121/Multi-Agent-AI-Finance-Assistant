@@ -7,7 +7,12 @@ logger = logging.getLogger(__name__)
 
 class RetrieverAgent:
     def __init__(self):
-        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        # Use a smaller, more memory-efficient model for production
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/paraphrase-MiniLM-L3-v2",
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={'normalize_embeddings': True}
+        )
         self.vector_store = None
 
     def index_documents(self, documents):
