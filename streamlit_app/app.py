@@ -32,6 +32,13 @@ Get comprehensive financial analysis on any stock from major exchanges worldwide
 Select stocks from the sidebar and ask your question below!
 """)
 
+# Data source info
+st.info("""
+📊 **Data Sources:** Real-time market data via Yahoo Finance API  
+🤖 **AI Analysis:** Multi-agent system for portfolio risk assessment  
+⚡ **Note:** On cloud deployments, news scraping may use enhanced fallback data enriched with market statistics
+""")
+
 # Display the current API endpoint (useful for debugging)
 # st.sidebar.markdown(f"**API Endpoint:** `{API_URL}`")
 
@@ -181,7 +188,7 @@ if st.button("Get Brief"):
         try:
             # Check if FastAPI is reachable
             try:
-                st.info(f"Connecting to: {API_URL}")
+                st.info(f"🔗 Connecting to: {API_URL}")
                 logger.info(f"Attempting to connect to {API_URL}")
                 
                 health_check = requests.get(f"{API_URL}/", timeout=10)
@@ -246,13 +253,29 @@ if st.button("Get Brief"):
                             # Display the analyzed stocks
                             symbols = retrieve_data.get("symbols", [])
                             if symbols:
-                                st.info(f"Analyzing stocks: {', '.join(symbols)}")
+                                st.info(f"📊 Analyzing stocks: {', '.join(symbols)}")
+                            
+                            # Check if we have real market data
+                            market_data_available = bool(retrieve_data.get("market_data", {}))
+                            context_available = bool(retrieve_data.get("context", []))
+                            
+                            if market_data_available:
+                                st.success(f"✅ Real-time market data loaded for {len(retrieve_data.get('market_data', {}))} symbols")
                             
                             # Display some retrieved data for verification
-                            with st.expander("View retrieved data"):
-                                st.write("Query:", retrieve_data.get("query"))
-                                st.write("Context snippets:", retrieve_data.get("context", [])[:2])
-                                st.write("Markets included:", list(retrieve_data.get("market_data", {}).keys()))
+                            with st.expander("📈 View retrieved data"):
+                                st.write("**Query:**", retrieve_data.get("query"))
+                                st.write("**Markets included:**", list(retrieve_data.get("market_data", {}).keys()))
+                                st.write("**Context sources:**", len(retrieve_data.get("context", [])))
+                                
+                                # Show sample context
+                                contexts = retrieve_data.get("context", [])
+                                if contexts:
+                                    st.write("**Sample context:**")
+                                    for i, ctx in enumerate(contexts[:2], 1):
+                                        # Show first 200 chars of each context
+                                        ctx_preview = ctx[:200] + "..." if len(ctx) > 200 else ctx
+                                        st.text(f"{i}. {ctx_preview}")
                             
                             # Step 2: Analyze and get summary
                             st.info("Generating market brief...")

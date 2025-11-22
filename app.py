@@ -157,7 +157,30 @@ except Exception as e:
 # FastAPI Endpoints
 @app.get("/")
 async def health_check():
-    return {"status": "healthy"}
+    return {"status": "healthy", "message": "Finance Assistant API is running"}
+
+@app.get("/debug/test-scraping")
+async def test_scraping(symbol: str = "AAPL"):
+    """Debug endpoint to test news scraping functionality"""
+    try:
+        logger.info(f"Testing news scraping for {symbol}")
+        url = f"https://finance.yahoo.com/quote/{symbol}/news/"
+        articles = scraping_agent.scrape_news([url], timeout=15)
+        
+        return {
+            "status": "success" if articles else "no_articles",
+            "symbol": symbol,
+            "articles_found": len(articles),
+            "sample_article": articles[0] if articles else None,
+            "message": f"Successfully scraped {len(articles)} articles" if articles else "No articles found - will use fallback data"
+        }
+    except Exception as e:
+        logger.error(f"Error in test scraping: {str(e)}")
+        return {
+            "status": "error",
+            "error": str(e),
+            "message": "Scraping failed - system will use fallback data"
+        }
 
 @app.get("/retrieve/retrieve")
 async def retrieve(
@@ -206,36 +229,66 @@ async def retrieve(
         logger.info(f"Successfully serialized data: {list(serialized_market_data.keys())}")
         
         # Step 3: Generate news URLs based on symbols
-        news_urls = [f"https://finance.yahoo.com/quote/{symbol}/news/" for symbol in symbol_list[:2]]  # Limit to first 2 symbols
-        logger.info(f"Scraping news from URLs: {news_urls}")
-        articles = scraping_agent.scrape_news(news_urls)
+        news_urls = [f"https://finance.yahoo.com/quote/{symbol}/news/" for symbol in symbol_list[:3]]  # Limit to first 3 symbols
+        logger.info(f"🔍 Attempting to scrape news from: {news_urls}")
+        articles = scraping_agent.scrape_news(news_urls, timeout=15)
+        logger.info(f"📰 News scraping result: {len(articles)} articles collected")
         
         if not articles:
-            # If scraping failed, use fallback content based on actual market data
-            logger.warning("News scraping failed, using fallback articles")
+            # If scraping failed, create rich fallback content based on actual market data
+            logger.warning("⚠️ News scraping failed - generating fallback articles from market data")
             articles = []
             for symbol in symbol_list:
                 company_name = ALL_STOCKS.get(symbol, symbol)
                 
-                # Try to include some data from market_data in the fallback
-                article_text = f"{company_name.title()} continues to be a key player in the market. "
+                # Create detailed fallback content using actual market data
+                article_text = f"{company_name} Market Analysis: "
                 
                 if symbol in market_data:
                     try:
                         market_df = market_data[symbol]
-                        if not market_df.empty:
-                            latest_close = market_df['Close'].iloc[-1] if 'Close' in market_df.columns else 'N/A'
-                            article_text += f"Latest closing price: {latest_close}. "
-                    except:
-                        pass
+                        if not market_df.empty and len(market_df) > 0:
+                            # Get recent trading data
+                            latest_close = market_df['Close'].iloc[-1] if 'Close' in market_df.columns else None
+                            latest_volume = market_df['Volume'].iloc[-1] if 'Volume' in market_df.columns else None
+                            
+                            # Calculate price change if we have enough data
+                            if len(market_df) > 1 and 'Close' in market_df.columns:
+                                prev_close = market_df['Close'].iloc[-2]
+                                price_change = ((latest_close - prev_close) / prev_close * 100) if prev_close > 0 else 0
+                                
+                                article_text += f"Recent trading shows price at ${latest_close:.2f}, "
+                                if price_change > 0:
+                                    article_text += f"up {price_change:.2f}% from previous close. "
+                                else:
+                                    article_text += f"down {abs(price_change):.2f}% from previous close. "
+                            elif latest_close:
+                                article_text += f"Current price at ${latest_close:.2f}. "
+                            
+                            if latest_volume:
+                                article_text += f"Trading volume: {latest_volume:,.0f} shares. "
+                            
+                            # Add 52-week context if available
+                            if len(market_df) > 50 and 'High' in market_df.columns and 'Low' in market_df.columns:
+                                recent_high = market_df['High'].tail(50).max()
+                                recent_low = market_df['Low'].tail(50).min()
+                                article_text += f"Recent trading range: ${recent_low:.2f} - ${recent_high:.2f}."
+                        else:
+                            article_text += "Market data retrieved successfully for analysis."
+                    except Exception as e:
+                        logger.warning(f"Error creating detailed fallback for {symbol}: {str(e)}")
+                        article_text += "Active in current market conditions."
+                else:
+                    article_text += "Market data retrieved for portfolio analysis."
                 
                 articles.append({
-                    "title": f"{company_name.title()} Market Update", 
+                    "title": f"{company_name} - Market Data Update", 
                     "text": article_text,
                     "url": f"https://finance.yahoo.com/quote/{symbol}"
                 })
+            logger.info(f"✅ Generated {len(articles)} fallback articles with market data")
         else:
-            logger.info(f"Successfully scraped {len(articles)} articles")
+            logger.info(f"✅ Successfully scraped {len(articles)} real news articles")
         
         # Step 4: Index and retrieve
         logger.info(f"Indexing {len(articles)} documents for retrieval")
@@ -248,33 +301,57 @@ async def retrieve(
             if hasattr(context_docs[0], 'page_content'):
                 # LangChain Document objects
                 context = [doc.page_content for doc in context_docs]
+            elif isinstance(context_docs[0], dict):
+                # Dictionary objects
+                context = [doc.get('text', str(doc)) for doc in context_docs]
             else:
                 # Direct text objects
                 context = [str(doc) for doc in context_docs]
         
-        if not context:
-            # If retrieval failed, use fallback content with actual data
-            logger.warning("Document retrieval failed, using fallback context")
+        if not context or len(context) == 0:
+            # If retrieval failed, create rich fallback context with actual market data
+            logger.warning("⚠️ Document retrieval failed - creating fallback context from market data")
             context = []
             for symbol in symbol_list:
                 company_name = ALL_STOCKS.get(symbol, symbol)
-                context_text = f"{company_name.title()} market data has been retrieved. "
                 
                 if symbol in serialized_market_data and serialized_market_data[symbol]:
                     try:
-                        # Add some statistics from the market data
+                        # Create detailed context from market data
                         records = serialized_market_data[symbol]
-                        if records:
+                        if records and len(records) > 0:
+                            latest = records[-1]
                             closes = [r.get('Close', 0) for r in records if 'Close' in r]
-                            if closes:
+                            volumes = [r.get('Volume', 0) for r in records if 'Volume' in r]
+                            
+                            context_text = f"{company_name} Analysis: "
+                            
+                            if 'Close' in latest:
+                                context_text += f"Current price ${latest['Close']:.2f}. "
+                            
+                            if closes and len(closes) > 1:
                                 avg_close = sum(closes) / len(closes)
-                                context_text += f"Average closing price over period: {avg_close:.2f}."
+                                context_text += f"Average price over period: ${avg_close:.2f}. "
+                                
+                                # Calculate volatility
+                                price_range = max(closes) - min(closes)
+                                volatility_pct = (price_range / avg_close) * 100 if avg_close > 0 else 0
+                                context_text += f"Price volatility: {volatility_pct:.1f}%. "
+                            
+                            if volumes:
+                                avg_volume = sum(volumes) / len(volumes)
+                                context_text += f"Average daily volume: {avg_volume:,.0f} shares."
+                            
+                            context.append(context_text)
+                        else:
+                            context.append(f"{company_name} market data retrieved successfully for analysis.")
                     except Exception as e:
-                        logger.warning(f"Error extracting context stats: {str(e)}")
-                
-                context.append(context_text)
+                        logger.warning(f"Error creating detailed context for {symbol}: {str(e)}")
+                        context.append(f"{company_name} included in portfolio analysis.")
+                else:
+                    context.append(f"{company_name} market data retrieved for evaluation.")
         
-        logger.info(f"Retrieved {len(context)} context documents")
+        logger.info(f"✅ Retrieved {len(context)} context documents for analysis")
         return {
             "market_data": serialized_market_data,
             "context": context,

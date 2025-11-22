@@ -10,13 +10,14 @@ class ScrapingAgent:
     def __init__(self):
         pass
 
-    def scrape_news(self, urls):
+    def scrape_news(self, urls, timeout=10):
         """
         Fetch news articles. First tries to extract symbol from URL and use yfinance,
         then falls back to newspaper scraping if needed.
         
         Args:
             urls: List of URLs (can be Yahoo Finance quote pages or article URLs)
+            timeout: Timeout in seconds for scraping operations
             
         Returns:
             List of article dictionaries with title, text, url, and publish_date
@@ -41,14 +42,20 @@ class ScrapingAgent:
                                 text = item.get('summary', '') or item.get('title', '')
                                 title = item.get('title', 'Market Update')
                                 
+                                # Ensure we have actual content
+                                if not text or len(text.strip()) < 10:
+                                    text = f"{title}. Market activity for {symbol}."
+                                
                                 articles.append({
                                     'title': title,
-                                    'text': text if text else f"News update about market from {title}",
+                                    'text': text,
                                     'url': item.get('link', url),
                                     'publish_date': datetime.fromtimestamp(item.get('providerPublishTime', 0)) if item.get('providerPublishTime') else None
                                 })
-                            logger.info(f"Fetched {len(news_items[:5])} news articles for {symbol} via yfinance")
+                            logger.info(f"✅ Fetched {len(news_items[:5])} news articles for {symbol} via yfinance")
                             continue
+                        else:
+                            logger.warning(f"No news items returned from yfinance for {symbol}")
                     except Exception as e:
                         logger.warning(f"Could not fetch news via yfinance for {url}: {str(e)}")
                 
@@ -57,23 +64,27 @@ class ScrapingAgent:
                     article = Article(url)
                     article.download()
                     article.parse()
-                    articles.append({
-                        'title': article.title,
-                        'text': article.text,
-                        'url': url,
-                        'publish_date': article.publish_date
-                    })
-                    logger.info(f"Scraped article via newspaper: {article.title}")
+                    
+                    if article.text and len(article.text.strip()) > 50:
+                        articles.append({
+                            'title': article.title or 'Market Article',
+                            'text': article.text,
+                            'url': url,
+                            'publish_date': article.publish_date
+                        })
+                        logger.info(f"✅ Scraped article via newspaper: {article.title}")
+                    else:
+                        logger.warning(f"Article text too short or empty from {url}")
                 except Exception as e:
                     logger.warning(f"Could not scrape {url} via newspaper: {str(e)}")
             
             if articles:
-                logger.info(f"Total articles collected: {len(articles)}")
+                logger.info(f"✅ Total articles collected: {len(articles)}")
             else:
-                logger.warning("No articles were collected from any source")
+                logger.warning("⚠️ No articles were collected from any source - will use fallback")
             
             return articles
             
         except Exception as e:
-            logger.error(f"Error in scrape_news: {str(e)}")
+            logger.error(f"❌ Error in scrape_news: {str(e)}")
             return []
