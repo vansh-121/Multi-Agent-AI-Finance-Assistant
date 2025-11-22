@@ -17,9 +17,14 @@ class RetrieverAgent:
 
     def index_documents(self, documents):
         try:
-            texts = [doc['text'] for doc in documents]
-            self.vector_store = FAISS.from_texts(texts, self.embeddings)
-            logger.info("Documents indexed in FAISS")
+            texts = [doc.get('text', '') for doc in documents]
+            # Filter out empty texts
+            texts = [text for text in texts if text.strip()]
+            if texts:
+                self.vector_store = FAISS.from_texts(texts, self.embeddings)
+                logger.info(f"Documents indexed in FAISS: {len(texts)} documents")
+            else:
+                logger.warning("No valid documents to index")
         except Exception as e:
             logger.error(f"Error indexing documents: {str(e)}")
 
