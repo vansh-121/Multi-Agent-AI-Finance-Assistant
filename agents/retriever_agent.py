@@ -13,10 +13,26 @@ class RetrieverAgent:
         """Store documents for keyword-based retrieval"""
         try:
             self.documents = documents
-            self.texts = [doc.get('text', '') for doc in documents]
-            # Filter out empty texts
-            self.texts = [text for text in self.texts if text.strip()]
-            logger.info(f"Indexed {len(self.texts)} documents")
+            self.texts = []
+            
+            for doc in documents:
+                # Try to get text from 'text' or 'content' or 'summary' fields
+                text = doc.get('text', '') or doc.get('content', '') or doc.get('summary', '')
+                
+                # Also accept the title if text is empty
+                if not text:
+                    text = doc.get('title', '')
+                
+                # Add document with combined text and title for better matching
+                if text.strip():
+                    # Combine title + text for better keyword matching
+                    title = doc.get('title', '')
+                    full_text = f"{title}. {text}" if title else text
+                    self.texts.append(full_text)
+            
+            logger.info(f"Indexed {len(self.texts)} documents (from {len(documents)} total)")
+            if len(self.texts) == 0 and documents:
+                logger.warning(f"No valid texts found. Sample doc keys: {documents[0].keys() if documents else 'empty'}")
         except Exception as e:
             logger.error(f"Error indexing documents: {str(e)}")
 

@@ -37,9 +37,13 @@ class ScrapingAgent:
                         
                         if news_items:
                             for item in news_items[:5]:  # Limit to 5 most recent articles
+                                # Use summary, or title, or create from available fields
+                                text = item.get('summary', '') or item.get('title', '')
+                                title = item.get('title', 'Market Update')
+                                
                                 articles.append({
-                                    'title': item.get('title', 'No title'),
-                                    'text': item.get('summary', item.get('title', '')),
+                                    'title': title,
+                                    'text': text if text else f"News update about market from {title}",
                                     'url': item.get('link', url),
                                     'publish_date': datetime.fromtimestamp(item.get('providerPublishTime', 0)) if item.get('providerPublishTime') else None
                                 })
