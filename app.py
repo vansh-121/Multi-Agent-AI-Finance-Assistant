@@ -493,17 +493,35 @@ async def process_query(
 
         # Step 4: Scrape news
         news_urls = [f"https://finance.yahoo.com/quote/{symbol}/news/" for symbol in symbol_list[:2]]
+        logger.info(f"Scraping news from URLs: {news_urls}")
         articles = scraping_agent.scrape_news(news_urls)
         
         if not articles:
-            # If scraping failed, use fallback content
+            # If scraping failed, use fallback content based on actual market data
+            logger.warning("News scraping failed, using fallback articles")
             articles = []
             for symbol in symbol_list:
                 company_name = ALL_STOCKS.get(symbol, symbol)
+                
+                # Try to include some data from market_data in the fallback
+                article_text = f"{company_name} continues to be a key player in the market. "
+                
+                if symbol in market_data:
+                    try:
+                        market_df = market_data[symbol]
+                        if not market_df.empty:
+                            latest_close = market_df['Close'].iloc[-1] if 'Close' in market_df.columns else 'N/A'
+                            article_text += f"Latest closing price: {latest_close}. "
+                    except:
+                        pass
+                
                 articles.append({
-                    "title": f"{company_name} News", 
-                    "text": f"{company_name} continues to be a key player in the technology market."
+                    "title": f"{company_name} Market Update", 
+                    "text": article_text,
+                    "url": f"https://finance.yahoo.com/quote/{symbol}"
                 })
+        else:
+            logger.info(f"Successfully scraped {len(articles)} articles")
 
         # Step 5: Index and retrieve
         retriever_agent.index_documents(articles)
