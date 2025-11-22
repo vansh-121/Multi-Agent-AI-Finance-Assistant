@@ -7,14 +7,24 @@ logger = logging.getLogger(__name__)
 
 class RetrieverAgent:
     def __init__(self):
-        self.embeddings = HuggingFaceEmbeddings(model_name="all-MiniLM-L6-v2")
+        # Use a smaller, more memory-efficient model for production
+        self.embeddings = HuggingFaceEmbeddings(
+            model_name="sentence-transformers/paraphrase-MiniLM-L3-v2",
+            model_kwargs={'device': 'cpu'},
+            encode_kwargs={'normalize_embeddings': True}
+        )
         self.vector_store = None
 
     def index_documents(self, documents):
         try:
-            texts = [doc['text'] for doc in documents]
-            self.vector_store = FAISS.from_texts(texts, self.embeddings)
-            logger.info("Documents indexed in FAISS")
+            texts = [doc.get('text', '') for doc in documents]
+            # Filter out empty texts
+            texts = [text for text in texts if text.strip()]
+            if texts:
+                self.vector_store = FAISS.from_texts(texts, self.embeddings)
+                logger.info(f"Documents indexed in FAISS: {len(texts)} documents")
+            else:
+                logger.warning("No valid documents to index")
         except Exception as e:
             logger.error(f"Error indexing documents: {str(e)}")
 
