@@ -45,6 +45,7 @@ jsonschema-specifications==2025.4.1
 langchain==0.3.25
 langchain-community==0.3.23
 langchain-core==0.3.59
+langchain-huggingface==0.1.2
 langchain-text-splitters==0.3.8
 langsmith==0.3.42
 llvmlite==0.44.0

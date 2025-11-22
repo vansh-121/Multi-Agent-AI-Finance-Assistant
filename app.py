@@ -695,6 +695,29 @@ def main():
         st.markdown("### Custom Symbol Entry")
         st.info("💡 You can also type any valid Yahoo Finance ticker symbol directly in your query (e.g., AAPL, MSFT, TSM, BTC-USD)")
     
+    # Quick reference guide for symbol formats
+    with st.sidebar.expander("📖 Symbol Format Guide"):
+        st.markdown("""
+        **Stock Symbol Formats:**
+        - 🇺🇸 US: `AAPL`, `MSFT`, `GOOGL`
+        - 🇰🇷 Korea: `005930.KS` (Samsung)
+        - 🇯🇵 Japan: `7203.T` (Toyota)
+        - 🇨🇳 Hong Kong: `0700.HK` (Tencent)
+        - 🇮🇳 India: `RELIANCE.NS`
+        - 🇬🇧 UK: `BP.L`
+        - 🇩🇪 Germany: `SAP.DE`
+        - 🇫🇷 France: `MC.PA`
+        - 🇨🇭 Switzerland: `NESN.SW`
+        - 🇨🇦 Canada: `SHOP.TO`
+        - 🇦🇺 Australia: `CBA.AX`
+        - ₿ Crypto: `BTC-USD`, `ETH-USD`
+        
+        **Tips:**
+        - Most US stocks use simple tickers
+        - International stocks have country suffixes
+        - Search by company name if unsure
+        """)
+    
     # Prepare query with selected stocks
     stock_query = ""
     selected_symbols = []
@@ -703,9 +726,41 @@ def main():
         selected_symbols = [stock.split(" ")[0] for stock in selected_stocks]
         stock_query = f"What's our risk exposure in {', '.join(selected_symbols)}?"
     
+    # Example queries section
+    st.markdown("### 💬 Ask Your Question")
+    
+    with st.expander("💡 Example Questions"):
+        st.markdown("""
+        **General Market Analysis:**
+        - "Analyze AAPL, MSFT, and GOOGL. What's the market trend?"
+        - "What's our risk exposure in tech stocks today?"
+        - "Give me a market brief on SPY and QQQ ETFs"
+        
+        **International Markets:**
+        - "Compare Samsung (005930.KS) and TSMC performance"
+        - "How are European tech stocks performing? SAP.DE, ASML"
+        - "Analyze Japanese auto makers: 7203.T (Toyota), HMC"
+        - "What's happening with Indian IT stocks? TCS.NS, INFY.NS"
+        
+        **Sector Analysis:**
+        - "What's happening with semiconductor stocks? NVDA, AMD, TSM"
+        - "Analyze Tesla vs traditional auto makers"
+        - "How are cloud software companies performing?"
+        
+        **Cryptocurrency:**
+        - "What's the risk exposure in my crypto portfolio? BTC-USD, ETH-USD"
+        - "Compare Bitcoin and Ethereum performance"
+        
+        **Portfolio Risk:**
+        - "What's my exposure to the top 5 tech stocks?"
+        - "Analyze risk across my diverse portfolio"
+        - "Should I rebalance based on current market conditions?"
+        """)
+    
     # Text query input with default that includes selected stocks
-    query = st.text_input("Ask something:", 
-                         value=stock_query if stock_query else "What's our risk exposure in tech stocks today?")
+    query = st.text_input("Enter your market analysis question:", 
+                         value=stock_query if stock_query else "What's our risk exposure in tech stocks today?",
+                         help="Ask about specific stocks, market trends, or portfolio risk")
     
     if st.button("Get Brief"):
         with st.spinner("Processing query..."):

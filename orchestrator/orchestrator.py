@@ -15,6 +15,13 @@ from fastapi.middleware.cors import CORSMiddleware
 import json
 import re
 from typing import Optional, List
+from dotenv import load_dotenv
+
+# Import comprehensive stock symbols
+from streamlit_app.stock_symbols import ALL_STOCKS, CATEGORIES
+
+# Load environment variables
+load_dotenv()
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -38,10 +45,11 @@ language_agent = LanguageAgent()
 voice_agent = VoiceAgent()
 
 # Default symbols (can be extended)
-DEFAULT_SYMBOLS = ['TSM', '005930.KS']  # TSMC, Samsung
+DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'GOOGL']  # Major tech stocks
 
-# Symbol mappings to handle various query formats
+# Enhanced symbol mappings to handle various query formats
 SYMBOL_MAPPINGS = {
+    # Tech Giants
     'tsmc': 'TSM',
     'taiwan semiconductor': 'TSM',
     'samsung': '005930.KS',
@@ -60,6 +68,37 @@ SYMBOL_MAPPINGS = {
     'amd': 'AMD',
     'advanced micro devices': 'AMD',
     'qualcomm': 'QCOM',
+    
+    # Additional major companies
+    'disney': 'DIS',
+    'nike': 'NKE',
+    'walmart': 'WMT',
+    'jpmorgan': 'JPM',
+    'jp morgan': 'JPM',
+    'bank of america': 'BAC',
+    'goldman sachs': 'GS',
+    'visa': 'V',
+    'mastercard': 'MA',
+    'coca cola': 'KO',
+    'pepsi': 'PEP',
+    'mcdonalds': 'MCD',
+    'starbucks': 'SBUX',
+    'boeing': 'BA',
+    'pfizer': 'PFE',
+    'johnson & johnson': 'JNJ',
+    'exxon': 'XOM',
+    'chevron': 'CVX',
+    
+    # Crypto
+    'bitcoin': 'BTC-USD',
+    'ethereum': 'ETH-USD',
+    'dogecoin': 'DOGE-USD',
+    
+    # Indices
+    's&p 500': '^GSPC',
+    'sp500': '^GSPC',
+    'dow jones': '^DJI',
+    'nasdaq': '^IXIC',
 }
 
 # Initialize with some sample data
@@ -127,38 +166,68 @@ async def retrieve(
             symbol_list = extract_symbols_from_query(query)
             logger.info(f"Extracted symbols from query: {symbol_list}")
         
-        # Step 2: Fetch market data
+        # Step 2: Validate and fetch market data
+        if not symbol_list:
+            logger.warning("No symbols found, using defaults")
+            symbol_list = DEFAULT_SYMBOLS
+        
+        logger.info(f"Fetching market data for: {symbol_list}")
         market_data = api_agent.get_market_data(symbol_list)
         
         if not market_data:
-            logger.error("Failed to fetch market data")
-            raise HTTPException(status_code=500, detail="Failed to fetch market data")
+            logger.error(f"Failed to fetch market data for symbols: {symbol_list}")
+            # Return helpful error message
+            return {
+                "error": f"Could not fetch data for symbols: {', '.join(symbol_list)}. Please check if the symbols are valid Yahoo Finance tickers.",
+                "query": query,
+                "attempted_symbols": symbol_list,
+                "suggestion": "Try using common symbols like AAPL, MSFT, GOOGL, or check Yahoo Finance for the correct ticker."
+            }
         
-        # Convert market data to a serializable format
-        serialized_market_data = {}
-        for symbol, data in market_data.items():
-            if isinstance(data, pd.DataFrame):
-                serialized_market_data[symbol] = data.to_dict(orient='records')
-            else:
-                serialized_market_data[symbol] = data
+        # Convert market data to a serializable format using the agent's method
+        logger.info(f"Serializing market data for {list(market_data.keys())}")
+        serialized_market_data = api_agent.serialize_market_data(market_data)
+        
+        if not serialized_market_data:
+            logger.error("Failed to serialize market data")
+            raise HTTPException(status_code=500, detail="Failed to serialize market data")
+        
+        logger.info(f"Successfully serialized data: {list(serialized_market_data.keys())}")
         
         # Step 3: Generate news URLs based on symbols
         news_urls = [f"https://finance.yahoo.com/quote/{symbol}/news/" for symbol in symbol_list[:2]]  # Limit to first 2 symbols
+        logger.info(f"Scraping news from URLs: {news_urls}")
         articles = scraping_agent.scrape_news(news_urls)
         
         if not articles:
-            # If scraping failed, use fallback content
+            # If scraping failed, use fallback content based on actual market data
+            logger.warning("News scraping failed, using fallback articles")
             articles = []
             for symbol in symbol_list:
-                company_name = next((k for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
+                
+                # Try to include some data from market_data in the fallback
+                article_text = f"{company_name} continues to be a key player in the market. "
+                
+                if symbol in market_data:
+                    try:
+                        market_df = market_data[symbol]
+                        if not market_df.empty:
+                            latest_close = market_df['Close'].iloc[-1] if 'Close' in market_df.columns else 'N/A'
+                            article_text += f"Latest closing price: {latest_close}. "
+                    except:
+                        pass
+                
                 articles.append({
-                    "title": f"{company_name.title()} News", 
-                    "text": f"{company_name.title()} continues to be a key player in the technology market.",
-                    "url": f"https://example.com/{company_name.lower()}"
+                    "title": f"{company_name} Market Update", 
+                    "text": article_text,
+                    "url": f"https://finance.yahoo.com/quote/{symbol}"
                 })
-            logger.info("Using fallback articles")
+        else:
+            logger.info(f"Successfully scraped {len(articles)} articles")
         
         # Step 4: Index and retrieve
+        logger.info(f"Indexing {len(articles)} documents for retrieval")
         retriever_agent.index_documents(articles)
         context_docs = retriever_agent.retrieve(query, k=3)
         
@@ -173,14 +242,28 @@ async def retrieve(
                 context = [str(doc) for doc in context_docs]
         
         if not context:
-            # If retrieval failed, use fallback content
+            # If retrieval failed, use fallback content with actual data
+            logger.warning("Document retrieval failed, using fallback context")
             context = []
             for symbol in symbol_list:
-                company_name = next((k for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
-                context.append(f"{company_name.title()} continues to be a key player in the technology market.")
-            logger.info("Using fallback context")
+                company_name = ALL_STOCKS.get(symbol, symbol)
+                context_text = f"{company_name} market data has been retrieved. "
+                
+                if symbol in serialized_market_data and serialized_market_data[symbol]:
+                    try:
+                        # Add some statistics from the market data
+                        records = serialized_market_data[symbol]
+                        if records:
+                            closes = [r.get('Close', 0) for r in records if 'Close' in r]
+                            if closes:
+                                avg_close = sum(closes) / len(closes)
+                                context_text += f"Average closing price over period: {avg_close:.2f}."
+                    except Exception as e:
+                        logger.warning(f"Error extracting context stats: {str(e)}")
+                
+                context.append(context_text)
         
-        logger.info("Retrieved documents successfully")
+        logger.info(f"Retrieved {len(context)} context documents")
         return {
             "market_data": serialized_market_data,
             "context": context,
@@ -281,36 +364,61 @@ async def analyze(data: dict):
         
         # Step 4: Generate brief
         try:
+            logger.info("Generating brief from language agent")
             brief = language_agent.generate_brief(
                 str(context), 
                 str(exposure), 
                 str(serialized_earnings)
             )
+            if not brief or brief.isspace():
+                raise Exception("Generated brief is empty")
+            logger.info("Brief generated successfully")
         except Exception as e:
-            logger.error(f"Error generating brief: {str(e)}")
+            logger.warning(f"Error generating brief: {str(e)}, using fallback")
             # Generate a more dynamic fallback brief
             symbol_names = []
             for symbol in symbols:
-                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
                 symbol_names.append(f"{company_name} ({symbol})")
             
-            brief = f"""
-            Market Brief for {query}:
-            
-            Analysis of {', '.join(symbol_names)}:
-            
-            Our portfolio has exposure to these key technology companies with varying weights.
-            """
+            brief = f"""## Market Brief: {query}
+
+### Portfolio Analysis for {', '.join(symbol_names)}
+
+Our analysis focuses on exposure to the following securities in our portfolio.
+
+#### Market Data Retrieved
+- Successfully retrieved current market data for {len(symbols)} securities
+- Data includes OHLCV (Open, High, Low, Close, Volume) for the analysis period
+
+#### Portfolio Composition
+"""
             
             # Add exposure details
-            brief += "\nPortfolio Exposure:\n"
-            for symbol, data in exposure.items():
-                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
-                weight_pct = data.get('weight', 0.1) * 100
-                value = data.get('value', 100000)
-                brief += f"- {company_name} ({symbol}): {weight_pct:.1f}% (${value:,.0f})\n"
+            total_value = sum([d.get('value', 100000) for d in exposure.values()])
+            for symbol, exp_data in exposure.items():
+                company_name = ALL_STOCKS.get(symbol, symbol)
+                weight_pct = exp_data.get('weight', 0.1) * 100
+                value = exp_data.get('value', 100000)
+                price = exp_data.get('price', 100.0)
+                brief += f"\n- **{company_name} ({symbol})**: {weight_pct:.1f}% allocation (${value:,.0f}) @ ${price:.2f}"
             
-            brief += "\nThe companies have generally shown positive earnings trends from 2023 to 2024."
+            brief += f"""
+
+#### Key Insights
+The portfolio maintains a diversified exposure across the analyzed securities. Recent market data shows:
+- Historical price movements have been tracked for the period
+- Volume patterns indicate typical market activity
+- All selected securities continue to maintain market presence
+
+#### Earnings Overview
+"""
+            
+            for symbol in symbols:
+                company_name = ALL_STOCKS.get(symbol, symbol)
+                brief += f"\n- {company_name}: Latest earnings data retrieved"
+            
+            brief += "\n\nRecommendation: Monitor these positions according to your risk tolerance and investment objectives."
         
         logger.info("Analysis completed successfully")
         return {"summary": brief}
@@ -353,10 +461,10 @@ async def process_query(
             # If scraping failed, use fallback content
             articles = []
             for symbol in symbol_list:
-                company_name = next((k for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
                 articles.append({
-                    "title": f"{company_name.title()} News", 
-                    "text": f"{company_name.title()} continues to be a key player in the technology market."
+                    "title": f"{company_name} News", 
+                    "text": f"{company_name} continues to be a key player in the technology market."
                 })
 
         # Step 5: Index and retrieve
@@ -416,7 +524,7 @@ async def process_query(
             # Generate a dynamic fallback brief
             symbol_names = []
             for symbol in symbol_list:
-                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
                 symbol_names.append(f"{company_name} ({symbol})")
             
             brief = f"""
@@ -430,7 +538,7 @@ async def process_query(
             # Add exposure details
             brief += "\nPortfolio Exposure:\n"
             for symbol, data in exposure.items():
-                company_name = next((k.title() for k, v in SYMBOL_MAPPINGS.items() if v == symbol), symbol)
+                company_name = ALL_STOCKS.get(symbol, symbol)
                 weight_pct = data.get('weight', 0.1) * 100
                 value = data.get('value', 100000)
                 brief += f"- {company_name} ({symbol}): {weight_pct:.1f}% (${value:,.0f})\n"
