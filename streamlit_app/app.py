@@ -181,12 +181,15 @@ if st.button("Get Brief"):
         try:
             # Check if FastAPI is reachable
             try:
-                health_check = requests.get(f"{API_URL}/")
+                st.info(f"Connecting to: {API_URL}")
+                logger.info(f"Attempting to connect to {API_URL}")
+                
+                health_check = requests.get(f"{API_URL}/", timeout=10)
                 if health_check.status_code != 200:
                     st.error(f"FastAPI server not reachable: {health_check.status_code} - {health_check.text}")
                     logger.error(f"FastAPI health check failed: {health_check.status_code} - {health_check.text}")
                 else:
-                    st.info("FastAPI server is healthy. Processing your request...")
+                    st.success("✅ Connected to backend!")
                     logger.info("FastAPI server is healthy")
                     
                     # Step 1: Retrieve relevant documents with explicit symbols if selected
@@ -198,7 +201,7 @@ if st.button("Get Brief"):
                         params["symbols"] = ",".join(selected_symbols)
                         st.info(f"Explicitly requesting analysis for: {', '.join(selected_symbols)}")
                     
-                    retrieve_response = requests.get(f"{API_URL}/retrieve/retrieve", params=params)
+                    retrieve_response = requests.get(f"{API_URL}/retrieve/retrieve", params=params, timeout=30)
                     logger.info(f"Retrieve response status: {retrieve_response.status_code}")
                     
                     if retrieve_response.status_code != 200:
@@ -255,7 +258,8 @@ if st.button("Get Brief"):
                             st.info("Generating market brief...")
                             analyze_response = requests.post(
                                 f"{API_URL}/analyze/analyze", 
-                                json={"data": retrieve_data}
+                                json={"data": retrieve_data},
+                                timeout=60
                             )
                             logger.info(f"Analyze response status: {analyze_response.status_code}")
                             
