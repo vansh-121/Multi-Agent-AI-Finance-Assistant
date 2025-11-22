@@ -20,7 +20,7 @@ This project is ideal for financial analysts, developers, and researchers lookin
 
 ## 🚀 Live Demo (Beta)
 
-🟡 Under development: [multi-agent-ai-finance-assistant.streamlit.app](https://multi-agent-ai-finance-assistant.streamlit.app)  
+🟡 Under development: [multi-agent-ai-finance-assistant.streamlit.app](https://multi-agents-finance-assistant.streamlit.app)  
 
 ---
 
