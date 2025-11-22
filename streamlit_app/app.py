@@ -12,9 +12,14 @@ logger = logging.getLogger(__name__)
 # Determine the API URL based on environment
 # On Streamlit Cloud: Set API_URL in Secrets
 # Locally: Use localhost:8000
-API_URL = os.environ.get("API_URL", "http://localhost:8000")
+try:
+    # Try to get from Streamlit secrets first (Streamlit Cloud)
+    API_URL = st.secrets.get("API_URL", os.environ.get("API_URL", "http://localhost:8000"))
+except Exception:
+    # Fallback to environment variable if secrets not available
+    API_URL = os.environ.get("API_URL", "http://localhost:8000")
 
-# Debug: Log the API URL being used (remove after debugging)
+# Debug: Log the API URL being used
 st.sidebar.text(f"API: {API_URL}")
 
 st.title("🧠 Morning Market Brief Assistant")
