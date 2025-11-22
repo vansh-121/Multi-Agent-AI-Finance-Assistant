@@ -1,40 +1,51 @@
-from langchain_community.vectorstores import FAISS
-from langchain_huggingface import HuggingFaceEmbeddings
 import logging
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
 class RetrieverAgent:
+    """Lightweight retriever using keyword matching (no ML embeddings)"""
     def __init__(self):
-        # Use a smaller, more memory-efficient model for production
-        self.embeddings = HuggingFaceEmbeddings(
-            model_name="sentence-transformers/paraphrase-MiniLM-L3-v2",
-            model_kwargs={'device': 'cpu'},
-            encode_kwargs={'normalize_embeddings': True}
-        )
-        self.vector_store = None
+        self.documents = []
+        self.texts = []
 
     def index_documents(self, documents):
+        """Store documents for keyword-based retrieval"""
         try:
-            texts = [doc.get('text', '') for doc in documents]
+            self.documents = documents
+            self.texts = [doc.get('text', '') for doc in documents]
             # Filter out empty texts
-            texts = [text for text in texts if text.strip()]
-            if texts:
-                self.vector_store = FAISS.from_texts(texts, self.embeddings)
-                logger.info(f"Documents indexed in FAISS: {len(texts)} documents")
-            else:
-                logger.warning("No valid documents to index")
+            self.texts = [text for text in self.texts if text.strip()]
+            logger.info(f"Indexed {len(self.texts)} documents")
         except Exception as e:
             logger.error(f"Error indexing documents: {str(e)}")
 
     def retrieve(self, query, k=3):
+        """Simple keyword-based retrieval"""
         try:
-            if self.vector_store:
-                docs = self.vector_store.similarity_search(query, k=k)
-                logger.info(f"Retrieved {len(docs)} documents for query")
-                return docs
-            return []
+            if not self.texts:
+                return []
+            
+            # Score texts based on keyword overlap
+            query_words = set(query.lower().split())
+            scored_texts = []
+            
+            for i, text in enumerate(self.texts):
+                text_words = set(text.lower().split())
+                overlap = len(query_words & text_words)
+                scored_texts.append((overlap, text))
+            
+            # Sort by score and return top k
+            scored_texts.sort(reverse=True, key=lambda x: x[0])
+            results = [{"page_content": text} for score, text in scored_texts[:k] if score > 0]
+            
+            # If no matches, return all texts
+            if not results:
+                results = [{"page_content": text} for text in self.texts[:k]]
+            
+            logger.info(f"Retrieved {len(results)} documents for query")
+            return results
+            
         except Exception as e:
             logger.error(f"Error retrieving documents: {str(e)}")
             return []
