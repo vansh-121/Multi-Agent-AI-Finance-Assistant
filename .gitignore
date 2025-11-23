@@ -1,4 +1,45 @@
+# Virtual Environment
 venv/
+env/
+*.pyc
 __pycache__/
-*.md
+*.pyo
+*.pyd
+
+# Environment Variables
 .env
+.env.local
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Temporary files
+*.tmp
+*.temp
+
+# Build artifacts
+dist/
+build/
+*.egg-info/
+
+# Documentation (keep README.md)
+# docs/*.md
+
+# Test coverage
+.coverage
+htmlcov/
+
+# Jupyter Notebooks checkpoints
+.ipynb_checkpoints/

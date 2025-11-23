@@ -47,6 +47,21 @@ voice_agent = VoiceAgent()
 # Default symbols (can be extended)
 DEFAULT_SYMBOLS = ['AAPL', 'MSFT', 'GOOGL']  # Major tech stocks
 
+# Initialize with some sample data
+try:
+    # Pre-fetch some data to initialize agents
+    market_data = api_agent.get_market_data(DEFAULT_SYMBOLS)
+    
+    # Initialize retriever with some sample data
+    sample_docs = [
+        {"text": "TSMC reported strong quarterly earnings with record revenue.", "title": "TSMC Earnings"},
+        {"text": "Samsung Electronics faces competition in the memory chip market.", "title": "Samsung Market Position"}
+    ]
+    retriever_agent.index_documents(sample_docs)
+    logger.info("Pre-initialized agents with sample data")
+except Exception as e:
+    logger.warning(f"Failed to pre-initialize agents: {str(e)}")
+
 # Enhanced symbol mappings to handle various query formats
 SYMBOL_MAPPINGS = {
     # Tech Giants

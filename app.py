@@ -7,6 +7,8 @@ import io
 import json
 import requests
 import pandas as pd
+import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from fastapi import FastAPI, UploadFile, File, HTTPException, Form, Query
 from fastapi.responses import StreamingResponse
 from fastapi.middleware.cors import CORSMiddleware
@@ -677,6 +679,8 @@ async def process_query(
                 brief += f"- {company_name} ({symbol}): {weight_pct:.1f}% (${value:,.0f})\n"
             
             brief += "\nThe companies have generally shown positive earnings trends from 2023 to 2024."
+    
+
 
         # Step 9: Convert to speech
         audio_response = voice_agent.text_to_speech(brief)
@@ -930,7 +934,209 @@ def main():
                                     else:
                                         st.subheader("Market Brief:")
                                         st.markdown(analyze_data["summary"])
-                                        st.success("Query processed successfully!")
+
+     # If 2 or more stocks are analyzed, show comparison
+                                    if len(selected_symbols) >= 2:
+                                        st.divider()
+                                        st.subheader("Side-by-Side Comparison")
+                                        
+                                        # Extract market data for comparison
+                                        market_data = retrieve_data.get("market_data", {})
+                                        
+                                        if market_data:
+                                            # Prepare comparison data
+                                            comparison_cols = st.columns(len(selected_symbols))
+                                            
+                                            for idx, symbol in enumerate(selected_symbols):
+                                                with comparison_cols[idx]:
+                                                    st.markdown(f"### {symbol}")
+                                                    
+                                                    if symbol in market_data:
+                                                        stock_data = market_data[symbol]
+                                                        
+                                                        # Display key metrics
+                                                        if isinstance(stock_data, dict):
+                                                            st.metric(
+                                                                "Current Price",
+                                                                f"${stock_data.get('price', 'N/A'):.2f}" if isinstance(stock_data.get('price'), (int, float)) else stock_data.get('price', 'N/A')
+                                                            )
+                                                            
+                                                            if stock_data.get('change'):
+                                                                change_color = "normal" if float(stock_data.get('change', 0)) >= 0 else "inverse"
+                                                                st.metric(
+                                                                    "Daily Change",
+                                                                    f"{stock_data.get('change', 'N/A')}%",
+                                                                    delta_color=change_color
+                                                                )
+                                                            
+                                                            if stock_data.get('52_week_high'):
+                                                                st.caption(f"52W High: ${stock_data.get('52_week_high', 'N/A')}")
+                                                            
+                                                            if stock_data.get('52_week_low'):
+                                                                st.caption(f"52W Low: ${stock_data.get('52_week_low', 'N/A')}")
+                                                            
+                                                            if stock_data.get('market_cap'):
+                                                                st.caption(f"Market Cap: {stock_data.get('market_cap', 'N/A')}")
+                                                            
+                                                            if stock_data.get('pe_ratio'):
+                                                                st.caption(f"P/E Ratio: {stock_data.get('pe_ratio', 'N/A')}")
+                                                        else:
+                                                            # Fallback display for other data types
+                                                            st.write(stock_data)
+                                                    else:
+                                                        st.warning(f"No data available for {symbol}")
+                                        
+                                        # Add detailed line-by-line comparison table
+                                        st.markdown("#### Detailed Metrics Comparison")
+                                        
+                                        # Build comparison table
+                                        comparison_data = {}
+                                        metrics = [
+                                            'price', 'change', '52_week_high', '52_week_low', 
+                                            'market_cap', 'pe_ratio', 'dividend_yield', 'volume'
+                                        ]
+                                        
+                                        for metric in metrics:
+                                            comparison_data[metric] = {}
+                                            for symbol in selected_symbols:
+                                                if symbol in market_data:
+                                                    stock_data = market_data[symbol]
+                                                    if isinstance(stock_data, dict):
+                                                        comparison_data[metric][symbol] = stock_data.get(metric, 'N/A')
+                                                    else:
+                                                        comparison_data[metric][symbol] = 'N/A'
+                                                else:
+                                                    comparison_data[metric][symbol] = 'N/A'
+                                        
+                                        # Create and display comparison dataframe
+                                        comparison_df = pd.DataFrame(comparison_data).T
+                                        comparison_df.index.name = 'Metric'
+                                        st.dataframe(comparison_df, use_container_width=True)
+                                    
+                                    st.success("Query processed successfully!")
+                                    
+                                    # If 2 or more stocks are analyzed, show comparison graphs
+                                    if len(selected_symbols) >= 2:
+                                        st.divider()
+                                        st.subheader("Stock Price Comparison Charts")
+                                        
+                                        # Extract market data for graphing
+                                        market_data_raw = retrieve_data.get("market_data", {})
+                                        
+                                        if market_data_raw:
+                                            try:
+                                                # Create price comparison chart
+                                                fig_price, ax_price = plt.subplots(figsize=(12, 6))
+                                                
+                                                has_data = False
+                                                for symbol in selected_symbols:
+                                                    if symbol in market_data_raw:
+                                                        stock_data = market_data_raw[symbol]
+                                                        
+                                                        if isinstance(stock_data, list) and len(stock_data) > 0:
+                                                            # Extract closing prices from serialized data
+                                                            dates = []
+                                                            closes = []
+                                                            
+                                                            for record in stock_data:
+                                                                if isinstance(record, dict):
+                                                                    if 'Date' in record and 'Close' in record:
+                                                                        dates.append(record['Date'])
+                                                                        closes.append(float(record['Close']))
+                                                            
+                                                            if closes:
+                                                                ax_price.plot(range(len(closes)), closes, marker='o', label=symbol, linewidth=2)
+                                                                has_data = True
+                                                
+                                                if has_data:
+                                                    ax_price.set_xlabel('Trading Days', fontsize=11, fontweight='bold')
+                                                    ax_price.set_ylabel('Closing Price (USD)', fontsize=11, fontweight='bold')
+                                                    ax_price.set_title('Stock Price Comparison Over Time', fontsize=13, fontweight='bold')
+                                                    ax_price.legend(loc='best', fontsize=10)
+                                                    ax_price.grid(True, alpha=0.3)
+                                                    plt.tight_layout()
+                                                    st.pyplot(fig_price)
+                                                else:
+                                                    st.warning("No price data available for charting")
+                                                
+                                                # Create volume comparison chart if data exists
+                                                fig_volume, ax_volume = plt.subplots(figsize=(12, 6))
+                                                
+                                                has_volume = False
+                                                for symbol in selected_symbols:
+                                                    if symbol in market_data_raw:
+                                                        stock_data = market_data_raw[symbol]
+                                                        
+                                                        if isinstance(stock_data, list) and len(stock_data) > 0:
+                                                            volumes = []
+                                                            
+                                                            for record in stock_data:
+                                                                if isinstance(record, dict) and 'Volume' in record:
+                                                                    try:
+                                                                        volumes.append(float(record['Volume']) / 1e6)  
+                                                                    except:
+                                                                        pass
+                                                            
+                                                            if volumes:
+                                                                ax_volume.bar([i + (selected_symbols.index(symbol) * 0.25) for i in range(len(volumes))], 
+                                                                              volumes, 
+                                                                              label=symbol, 
+                                                                              width=0.25, 
+                                                                              alpha=0.8)
+                                                                has_volume = True
+                                                
+                                                if has_volume:
+                                                    ax_volume.set_xlabel('Trading Days', fontsize=11, fontweight='bold')
+                                                    ax_volume.set_ylabel('Trading Volume (Millions)', fontsize=11, fontweight='bold')
+                                                    ax_volume.set_title('Stock Trading Volume Comparison', fontsize=13, fontweight='bold')
+                                                    ax_volume.legend(loc='best', fontsize=10)
+                                                    ax_volume.grid(True, alpha=0.3, axis='y')
+                                                    plt.tight_layout()
+                                                    st.pyplot(fig_volume)
+                                                
+                                                # Create normalized price performance chart
+                                                fig_perf, ax_perf = plt.subplots(figsize=(12, 6))
+                                                
+                                                has_perf = False
+                                                for symbol in selected_symbols:
+                                                    if symbol in market_data_raw:
+                                                        stock_data = market_data_raw[symbol]
+                                                        
+                                                        if isinstance(stock_data, list) and len(stock_data) > 1:
+                                                            closes = []
+                                                            
+                                                            for record in stock_data:
+                                                                if isinstance(record, dict) and 'Close' in record:
+                                                                    closes.append(float(record['Close']))
+                                                            
+                                                            if closes:
+                                                                # Normalize to starting price (100)
+                                                                normalized = [(c / closes[0] * 100) - 100 for c in closes]
+                                                                ax_perf.plot(range(len(normalized)), normalized, marker='o', label=symbol, linewidth=2)
+                                                                has_perf = True
+                                                
+                                                if has_perf:
+                                                    ax_perf.axhline(y=0, color='r', linestyle='--', alpha=0.5)
+                                                    ax_perf.set_xlabel('Trading Days', fontsize=11, fontweight='bold')
+                                                    ax_perf.set_ylabel('% Change from Start', fontsize=11, fontweight='bold')
+                                                    ax_perf.set_title('Normalized Price Performance (%)', fontsize=13, fontweight='bold')
+                                                    ax_perf.legend(loc='best', fontsize=10)
+                                                    ax_perf.grid(True, alpha=0.3)
+                                                    plt.tight_layout()
+                                                    st.pyplot(fig_perf)
+                                                
+                                                st.success("Stock comparison charts generated successfully!")
+                                                
+                                            except Exception as e:
+                                                st.warning(f"Could not generate charts: {str(e)}")
+                                                logger.warning(f"Error generating charts: {str(e)}")
+                                                
+                                                
+
+
+                                    
+        
+
                 except requests.exceptions.ConnectionError:
                     st.error("FastAPI server is trying to connect to Render services. If it takes long, try running it locally.")
             except Exception as e:
@@ -995,5 +1201,7 @@ def main():
         calculates portfolio exposure, and generates a comprehensive market brief.
         """)
 
+
 if __name__ == "__main__":
+
     main()
