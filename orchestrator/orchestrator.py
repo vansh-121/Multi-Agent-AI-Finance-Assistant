@@ -311,15 +311,36 @@ async def retrieve(
                         if records and len(records) > 0:
                             latest = records[-1]
                             closes = [r.get('Close', 0) for r in records if 'Close' in r]
-                            if closes:
+                            volumes = [r.get('Volume', 0) for r in records if 'Volume' in r]
+                            
+                            context_text = f"{company_name} Analysis: "
+                            
+                            if 'Close' in latest:
+                                context_text += f"Current price ${latest['Close']:.2f}. "
+                            
+                            if closes and len(closes) > 1:
                                 avg_close = sum(closes) / len(closes)
-                                context_text += f"Average closing price over period: {avg_close:.2f}."
+                                context_text += f"Average price over period: ${avg_close:.2f}. "
+                                
+                                # Calculate volatility
+                                price_range = max(closes) - min(closes)
+                                volatility_pct = (price_range / avg_close) * 100 if avg_close > 0 else 0
+                                context_text += f"Price volatility: {volatility_pct:.1f}%. "
+                            
+                            if volumes:
+                                avg_volume = sum(volumes) / len(volumes)
+                                context_text += f"Average daily volume: {avg_volume:,.0f} shares."
+                            
+                            context.append(context_text)
+                        else:
+                            context.append(f"{company_name} market data retrieved successfully for analysis.")
                     except Exception as e:
-                        logger.warning(f"Error extracting context stats: {str(e)}")
-                
-                context.append(context_text)
+                        logger.warning(f"Error creating detailed context for {symbol}: {str(e)}")
+                        context.append(f"{company_name} included in portfolio analysis.")
+                else:
+                    context.append(f"{company_name} market data retrieved for evaluation.")
         
-        logger.info(f"Retrieved {len(context)} context documents")
+        logger.info(f"✅ Retrieved {len(context)} context documents for analysis")
         return {
             "market_data": serialized_market_data,
             "context": context,
