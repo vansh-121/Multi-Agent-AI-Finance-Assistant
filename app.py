@@ -962,12 +962,19 @@ def main():
                                                             )
                                                             
                                                             if stock_data.get('change'):
-                                                                change_color = "normal" if float(stock_data.get('change', 0)) >= 0 else "inverse"
-                                                                st.metric(
-                                                                    "Daily Change",
-                                                                    f"{stock_data.get('change', 'N/A')}%",
-                                                                    delta_color=change_color
-                                                                )
+                                                                try:
+                                                                    change_value = float(stock_data.get('change', 0))
+                                                                    change_color = "normal" if change_value >= 0 else "inverse"
+                                                                    st.metric(
+                                                                        "Daily Change",
+                                                                        f"{change_value:.2f}%",
+                                                                        delta_color=change_color
+                                                                    )
+                                                                except (ValueError, TypeError):
+                                                                    st.metric(
+                                                                        "Daily Change",
+                                                                        f"{stock_data.get('change', 'N/A')}"
+                                                                    )
                                                             
                                                             if stock_data.get('52_week_high'):
                                                                 st.caption(f"52W High: ${stock_data.get('52_week_high', 'N/A')}")
@@ -989,29 +996,61 @@ def main():
                                         # Add detailed line-by-line comparison table
                                         st.markdown("#### Detailed Metrics Comparison")
                                         
-                                        # Build comparison table
+                                        # Build comparison table from actual market data
                                         comparison_data = {}
-                                        metrics = [
-                                            'price', 'change', '52_week_high', '52_week_low', 
-                                            'market_cap', 'pe_ratio', 'dividend_yield', 'volume'
-                                        ]
                                         
-                                        for metric in metrics:
-                                            comparison_data[metric] = {}
-                                            for symbol in selected_symbols:
-                                                if symbol in market_data:
-                                                    stock_data = market_data[symbol]
-                                                    if isinstance(stock_data, dict):
-                                                        comparison_data[metric][symbol] = stock_data.get(metric, 'N/A')
-                                                    else:
-                                                        comparison_data[metric][symbol] = 'N/A'
+                                        for symbol in selected_symbols:
+                                            if symbol in market_data:
+                                                stock_data = market_data[symbol]
+                                                
+                                                # If stock_data is a list (serialized DataFrame), calculate metrics
+                                                if isinstance(stock_data, list) and len(stock_data) > 0:
+                                                    try:
+                                                        # Convert to DataFrame for easier processing
+                                                        df = pd.DataFrame(stock_data)
+                                                        
+                                                        # Calculate metrics from the data
+                                                        latest = df.iloc[-1] if not df.empty else {}
+                                                        
+                                                        comparison_data[symbol] = {
+                                                            'Current Price': f"${latest.get('Close', 'N/A'):.2f}" if 'Close' in latest and pd.notna(latest.get('Close')) else 'N/A',
+                                                            'Daily Change %': f"{((latest.get('Close', 0) - df.iloc[-2].get('Close', 0)) / df.iloc[-2].get('Close', 1) * 100):.2f}%" if len(df) > 1 and 'Close' in latest else 'N/A',
+                                                            '52W High': f"${df['High'].max():.2f}" if 'High' in df.columns else 'N/A',
+                                                            '52W Low': f"${df['Low'].min():.2f}" if 'Low' in df.columns else 'N/A',
+                                                            'Avg Volume': f"{df['Volume'].mean():,.0f}" if 'Volume' in df.columns else 'N/A',
+                                                            'Latest Volume': f"{latest.get('Volume', 'N/A'):,.0f}" if 'Volume' in latest and pd.notna(latest.get('Volume')) else 'N/A'
+                                                        }
+                                                    except Exception as e:
+                                                        logger.warning(f"Error calculating metrics for {symbol}: {str(e)}")
+                                                        comparison_data[symbol] = {
+                                                            'Current Price': 'N/A',
+                                                            'Daily Change %': 'N/A',
+                                                            '52W High': 'N/A',
+                                                            '52W Low': 'N/A',
+                                                            'Avg Volume': 'N/A',
+                                                            'Latest Volume': 'N/A'
+                                                        }
+                                                # If stock_data is already a dict with metrics
+                                                elif isinstance(stock_data, dict):
+                                                    comparison_data[symbol] = {
+                                                        'Current Price': f"${stock_data.get('price', 'N/A'):.2f}" if isinstance(stock_data.get('price'), (int, float)) else stock_data.get('price', 'N/A'),
+                                                        'Daily Change %': f"{stock_data.get('change', 'N/A')}%",
+                                                        '52W High': stock_data.get('52_week_high', 'N/A'),
+                                                        '52W Low': stock_data.get('52_week_low', 'N/A'),
+                                                        'Market Cap': stock_data.get('market_cap', 'N/A'),
+                                                        'P/E Ratio': stock_data.get('pe_ratio', 'N/A')
+                                                    }
                                                 else:
-                                                    comparison_data[metric][symbol] = 'N/A'
+                                                    comparison_data[symbol] = {'Status': 'No data available'}
+                                            else:
+                                                comparison_data[symbol] = {'Status': 'Symbol not found'}
                                         
                                         # Create and display comparison dataframe
-                                        comparison_df = pd.DataFrame(comparison_data).T
-                                        comparison_df.index.name = 'Metric'
-                                        st.dataframe(comparison_df, use_container_width=True)
+                                        if comparison_data:
+                                            comparison_df = pd.DataFrame(comparison_data)
+                                            st.dataframe(comparison_df, use_container_width=True)
+                                        else:
+                                            st.info("No data available for comparison table")
                                     
                                     st.success("Query processed successfully!")
                                     
