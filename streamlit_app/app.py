@@ -4,10 +4,26 @@ import io
 import logging
 import json
 import os
+import pandas as pd
+import matplotlib.pyplot as plt
+import sys
+from pathlib import Path
 from stock_symbols import ALL_STOCKS, CATEGORIES, get_stock_display_name, search_stocks
+
+# Add parent directory to path for importing agents
+parent_dir = str(Path(__file__).parent.parent)
+if parent_dir not in sys.path:
+    sys.path.insert(0, parent_dir)
+
+from agents.prediction_agent import PredictionAgent
+from agents.graphing_agent import GraphingAgent
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
+
+# Initialize agents
+prediction_agent = PredictionAgent()
+graphing_agent = GraphingAgent()
 
 # Determine the API URL based on environment
 # On Streamlit Cloud: Set API_URL in Secrets
@@ -304,9 +320,293 @@ if st.button("Get Brief"):
                                     st.error(f"Analysis error: {analyze_data['error']}")
                                     logger.error(f"Analysis error: {analyze_data['error']}")
                                 else:
+                                    # Display market brief
                                     st.subheader("Market Brief:")
                                     st.markdown(analyze_data["summary"])
+                                    
+                                    # If 2 or more stocks are analyzed, show comparison
+                                    if len(selected_symbols) >= 2:
+                                        st.divider()
+                                        st.subheader("📊 Side-by-Side Comparison")
+                                        
+                                        # Extract market data for comparison
+                                        market_data = retrieve_data.get("market_data", {})
+                                        
+                                        if market_data:
+                                            # Prepare comparison data
+                                            comparison_cols = st.columns(len(selected_symbols))
+                                            
+                                            for idx, symbol in enumerate(selected_symbols):
+                                                with comparison_cols[idx]:
+                                                    st.markdown(f"### {symbol}")
+                                                    
+                                                    if symbol in market_data:
+                                                        stock_data = market_data[symbol]
+                                                        
+                                                        # Display key metrics
+                                                        if isinstance(stock_data, dict):
+                                                            st.metric(
+                                                                "Current Price",
+                                                                f"${stock_data.get('price', 'N/A'):.2f}" if isinstance(stock_data.get('price'), (int, float)) else stock_data.get('price', 'N/A')
+                                                            )
+                                                            
+                                                            if stock_data.get('change'):
+                                                                try:
+                                                                    change_value = float(stock_data.get('change', 0))
+                                                                    change_color = "normal" if change_value >= 0 else "inverse"
+                                                                    st.metric(
+                                                                        "Daily Change",
+                                                                        f"{change_value:.2f}%",
+                                                                        delta_color=change_color
+                                                                    )
+                                                                except (ValueError, TypeError):
+                                                                    st.metric(
+                                                                        "Daily Change",
+                                                                        f"{stock_data.get('change', 'N/A')}"
+                                                                    )
+                                                            
+                                                            if stock_data.get('52_week_high'):
+                                                                st.caption(f"52W High: ${stock_data.get('52_week_high', 'N/A')}")
+                                                            
+                                                            if stock_data.get('52_week_low'):
+                                                                st.caption(f"52W Low: ${stock_data.get('52_week_low', 'N/A')}")
+                                                            
+                                                            if stock_data.get('market_cap'):
+                                                                st.caption(f"Market Cap: {stock_data.get('market_cap', 'N/A')}")
+                                                            
+                                                            if stock_data.get('pe_ratio'):
+                                                                st.caption(f"P/E Ratio: {stock_data.get('pe_ratio', 'N/A')}")
+                                                        else:
+                                                            # Fallback display for other data types
+                                                            st.write(stock_data)
+                                                    else:
+                                                        st.warning(f"No data available for {symbol}")
+                                        
+                                        # Add detailed line-by-line comparison table
+                                        st.markdown("#### Detailed Metrics Comparison")
+                                        
+                                        # Build comparison table from actual market data
+                                        comparison_data = {}
+                                        
+                                        for symbol in selected_symbols:
+                                            if symbol in market_data:
+                                                stock_data = market_data[symbol]
+                                                
+                                                # If stock_data is a list (serialized DataFrame), calculate metrics
+                                                if isinstance(stock_data, list) and len(stock_data) > 0:
+                                                    try:
+                                                        # Convert to DataFrame for easier processing
+                                                        df = pd.DataFrame(stock_data)
+                                                        
+                                                        # Calculate metrics from the data
+                                                        latest = df.iloc[-1] if not df.empty else {}
+                                                        
+                                                        comparison_data[symbol] = {
+                                                            'Current Price': f"${latest.get('Close', 'N/A'):.2f}" if 'Close' in latest and pd.notna(latest.get('Close')) else 'N/A',
+                                                            'Daily Change %': f"{((latest.get('Close', 0) - df.iloc[-2].get('Close', 0)) / df.iloc[-2].get('Close', 1) * 100):.2f}%" if len(df) > 1 and 'Close' in latest else 'N/A',
+                                                            '52W High': f"${df['High'].max():.2f}" if 'High' in df.columns else 'N/A',
+                                                            '52W Low': f"${df['Low'].min():.2f}" if 'Low' in df.columns else 'N/A',
+                                                            'Avg Volume': f"{df['Volume'].mean():,.0f}" if 'Volume' in df.columns else 'N/A',
+                                                            'Latest Volume': f"{latest.get('Volume', 'N/A'):,.0f}" if 'Volume' in latest and pd.notna(latest.get('Volume')) else 'N/A'
+                                                        }
+                                                    except Exception as e:
+                                                        logger.warning(f"Error calculating metrics for {symbol}: {str(e)}")
+                                                        comparison_data[symbol] = {
+                                                            'Current Price': 'N/A',
+                                                            'Daily Change %': 'N/A',
+                                                            '52W High': 'N/A',
+                                                            '52W Low': 'N/A',
+                                                            'Avg Volume': 'N/A',
+                                                            'Latest Volume': 'N/A'
+                                                        }
+                                                # If stock_data is already a dict with metrics
+                                                elif isinstance(stock_data, dict):
+                                                    comparison_data[symbol] = {
+                                                        'Current Price': f"${stock_data.get('price', 'N/A'):.2f}" if isinstance(stock_data.get('price'), (int, float)) else stock_data.get('price', 'N/A'),
+                                                        'Daily Change %': f"{stock_data.get('change', 'N/A')}%",
+                                                        '52W High': stock_data.get('52_week_high', 'N/A'),
+                                                        '52W Low': stock_data.get('52_week_low', 'N/A'),
+                                                        'Market Cap': stock_data.get('market_cap', 'N/A'),
+                                                        'P/E Ratio': stock_data.get('pe_ratio', 'N/A')
+                                                    }
+                                                else:
+                                                    comparison_data[symbol] = {'Status': 'No data available'}
+                                            else:
+                                                comparison_data[symbol] = {'Status': 'Symbol not found'}
+                                        
+                                        # Create and display comparison dataframe
+                                        if comparison_data:
+                                            comparison_df = pd.DataFrame(comparison_data)
+                                            st.dataframe(comparison_df, use_container_width=True)
+                                        else:
+                                            st.info("No data available for comparison table")
+                                    
                                     st.success("Query processed successfully!")
+                                    
+                                    # ===== EARNINGS AND GROWTH TRENDS VISUALIZATION SECTION =====
+                                    st.divider()
+                                    st.subheader("📊 Yearly Earnings & Growth Analysis")
+                                    
+                                    # Fetch earnings data and create predictions
+                                    earnings_data_dict = {}
+                                    growth_data_dict = {}
+                                    
+                                    try:
+                                        with st.spinner("Generating earnings forecasts and growth trend analysis..."):
+                                            for symbol in selected_symbols:
+                                                try:
+                                                    # Try to get earnings data from the backend
+                                                    earnings_response = requests.get(
+                                                        f"{API_URL}/get_earnings",
+                                                        params={"symbol": symbol},
+                                                        timeout=15
+                                                    )
+                                                    
+                                                    if earnings_response.status_code == 200:
+                                                        earnings_json = earnings_response.json()
+                                                        if "earnings" in earnings_json and earnings_json["earnings"]:
+                                                            # Convert to DataFrame
+                                                            earnings_df = pd.DataFrame(earnings_json["earnings"])
+                                                            
+                                                            # Generate predictions
+                                                            earnings_with_pred = prediction_agent.predict_earnings(
+                                                                earnings_df, symbol, years_to_predict=2
+                                                            )
+                                                            if earnings_with_pred is not None:
+                                                                earnings_data_dict[symbol] = earnings_with_pred
+                                                                
+                                                                # Get growth rate predictions
+                                                                growth_with_pred = prediction_agent.predict_growth_rate(
+                                                                    earnings_df, symbol, years_to_predict=2
+                                                                )
+                                                                if growth_with_pred is not None:
+                                                                    growth_data_dict[symbol] = growth_with_pred
+                                                except Exception as e:
+                                                    logger.warning(f"Could not get earnings for {symbol}: {str(e)}")
+                                                    continue
+                                        
+                                        # Display visualizations if we have data
+                                        if earnings_data_dict:
+                                            st.info(f" Generated predictions for {len(earnings_data_dict)} stock(s)")
+                                            
+                                            # Create tabs for different visualization types
+                                            tab1, tab2, tab3 = st.tabs([
+                                                "📈 Earnings Trends",
+                                                "📊 Growth Rates",
+                                                "🔄 Combined Analysis"
+                                            ])
+                                            
+                                            with tab1:
+                                                st.markdown("#### Yearly Earnings Comparison (Historical + Predicted)")
+                                                st.caption("Blue lines show historical earnings, Orange dashed lines show AI predictions")
+                                                
+                                                try:
+                                                    fig_earnings = graphing_agent.create_yearly_earnings_comparison(
+                                                        earnings_data_dict,
+                                                        title="Yearly Earnings Comparison: Historical vs Predicted"
+                                                    )
+                                                    if fig_earnings:
+                                                        st.pyplot(fig_earnings)
+                                                        
+                                                        # Add interpretation
+                                                        with st.expander("📝 How to read this chart"):
+                                                            st.markdown("""
+                                                            - **Blue lines (circles)**: Actual historical earnings
+                                                            - **Orange dashed lines (squares)**: AI-predicted future earnings
+                                                            - **Vertical gap**: Transition point from historical to predicted data
+                                                            
+                                                            The predictions are based on polynomial regression analysis of historical trends.
+                                                            """)
+                                                except Exception as e:
+                                                    logger.error(f"Error creating earnings chart: {str(e)}")
+                                                    st.warning(f"Could not generate earnings chart: {str(e)}")
+                                            
+                                            with tab2:
+                                                st.markdown("#### Year-over-Year Growth Trends (Historical + Predicted)")
+                                                st.caption("Shows growth rates with baseline at 0% for reference")
+                                                
+                                                try:
+                                                    fig_growth = graphing_agent.create_growth_trend_comparison(
+                                                        growth_data_dict,
+                                                        title="Year-over-Year Growth Trends: Historical vs Predicted"
+                                                    )
+                                                    if fig_growth:
+                                                        st.pyplot(fig_growth)
+                                                        
+                                                        # Add interpretation
+                                                        with st.expander("📝 How to read this chart"):
+                                                            st.markdown("""
+                                                            - **Blue lines (circles)**: Historical growth rates
+                                                            - **Orange dashed lines (squares)**: Predicted growth rates
+                                                            - **Black line at 0%**: No growth reference baseline
+                                                            
+                                                            Positive values indicate earnings growth, negative values indicate decline.
+                                                            """)
+                                                except Exception as e:
+                                                    logger.error(f"Error creating growth chart: {str(e)}")
+                                                    st.warning(f"Could not generate growth chart: {str(e)}")
+                                            
+                                            with tab3:
+                                                st.markdown("#### Combined Earnings & Growth Analysis")
+                                                st.caption("Integrated view showing both metrics simultaneously")
+                                                
+                                                try:
+                                                    fig_combined = graphing_agent.create_combined_earnings_and_growth(
+                                                        earnings_data_dict,
+                                                        growth_data_dict,
+                                                        title="Comprehensive Analysis"
+                                                    )
+                                                    if fig_combined:
+                                                        st.pyplot(fig_combined)
+                                                        
+                                                        # Add interpretation
+                                                        with st.expander("📝 How to read this chart"):
+                                                            st.markdown("""
+                                                            **Top Panel - Earnings:**
+                                                            - Shows absolute earnings values over time
+                                                            - Useful for assessing company size and profitability
+                                                            
+                                                            **Bottom Panel - Growth Trends:**
+                                                            - Shows percentage change year-over-year
+                                                            - Useful for assessing company momentum
+                                                            
+                                                            Both panels show historical data (solid lines) and predictions (dashed lines).
+                                                            """)
+                                                except Exception as e:
+                                                    logger.error(f"Error creating combined chart: {str(e)}")
+                                                    st.warning(f"Could not generate combined chart: {str(e)}")
+                                            
+                                            # Display comparison table
+                                            st.divider()
+                                            st.markdown("#### 📊 Key Metrics Comparison Table")
+                                            
+                                            try:
+                                                comparison_table = graphing_agent.create_comparison_table(
+                                                    selected_symbols,
+                                                    earnings_data_dict,
+                                                    growth_data_dict
+                                                )
+                                                if comparison_table is not None and not comparison_table.empty:
+                                                    st.dataframe(comparison_table, use_container_width=True)
+                                                    
+                                                    # Add download button for the data
+                                                    csv = comparison_table.to_csv(index=False)
+                                                    st.download_button(
+                                                        label="📥 Download Comparison Data (CSV)",
+                                                        data=csv,
+                                                        file_name=f"earnings_analysis_{pd.Timestamp.now().strftime('%Y%m%d_%H%M%S')}.csv",
+                                                        mime="text/csv"
+                                                    )
+                                            except Exception as e:
+                                                logger.error(f"Error creating comparison table: {str(e)}")
+                                                st.warning(f"Could not generate comparison table: {str(e)}")
+                                        else:
+                                            st.info("💡 Earnings data not available for the selected stocks. This may occur for newer companies or limited data availability.")
+                                    
+                                    except Exception as e:
+                                        logger.error(f"Error in earnings analysis section: {str(e)}")
+                                        st.warning(f"Earnings analysis encountered an issue: {str(e)}")
+                                
             except requests.exceptions.ConnectionError:
                 st.error(f"FastAPI server is trying to connect to Render services. If it takes long, try running it locally.")
                 logger.error(f"Connection error: Failed to connect to FastAPI server at {API_URL}")
