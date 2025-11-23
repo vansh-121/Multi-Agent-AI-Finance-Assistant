@@ -75,7 +75,6 @@ peewee==3.18.1
 pillow==11.2.1
 platformdirs==4.3.8
 propcache==0.3.1
-protobuf==6.30.2
 pyarrow==20.0.0
 pycparser==2.22
 pydantic==2.11.4
