@@ -44,7 +44,7 @@ jsonpointer==3.0.0
 jsonschema==4.23.0
 jsonschema-specifications==2025.4.1
 langchain==0.3.25
-langchain-community==0.3.23
+langchain-community==0.3.27
 langchain-core==0.3.59
 langchain-huggingface==0.1.2
 langchain-text-splitters==0.3.8
