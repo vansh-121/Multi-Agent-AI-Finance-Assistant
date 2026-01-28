@@ -72,7 +72,7 @@ packaging==24.2
 panda==0.3.1
 pandas==2.2.3
 peewee==3.18.1
-pillow==11.2.1
+pillow==11.3.0
 platformdirs==4.3.8
 propcache==0.3.1
 pyarrow==20.0.0
