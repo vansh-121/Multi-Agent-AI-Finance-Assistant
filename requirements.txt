@@ -33,7 +33,7 @@ gTTS==2.5.4
 h11==0.16.0
 httpcore==1.0.9
 httpx==0.28.1
-httpx-sse==0.4.0
+httpx-sse==0.4.3
 huggingface-hub==0.31.1
 idna==3.10
 jieba3k==0.35.1
