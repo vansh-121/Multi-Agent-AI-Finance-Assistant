@@ -1,0 +1,53 @@
+name: Wake Up Streamlit Apps
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - "wake_up_streamlit.py"
+      - "streamlit_apps.py"
+      - ".github/workflows/wake_up.yml"
+  schedule:
+    # Runs every hour — the script itself enforces a 10-hour minimum interval
+    # via ENFORCE_WAKE_INTERVAL / WAKE_INTERVAL_HOURS, so most runs will
+    # skip and finish in seconds.
+    - cron: "0 * * * *"
+  workflow_dispatch: # Allow manual trigger from GitHub UI
+
+jobs:
+  wake-up:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install Chromium & ChromeDriver
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq chromium-browser chromium-chromedriver
+
+      - name: Install Python dependencies
+        run: pip install selenium
+
+      - name: Run wake-up script
+        env:
+          ENFORCE_WAKE_INTERVAL: "1"
+          WAKE_INTERVAL_HOURS: "10"
+          CHROME_BINARY: "/usr/bin/chromium-browser"
+          CHROMEDRIVER_PATH: "/usr/bin/chromedriver"
+        run: python wake_up_streamlit.py
+
+      - name: Upload wake-up log
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: wakeup-log
+          path: wakeup_log.txt
+          retention-days: 7

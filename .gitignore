@@ -43,3 +43,7 @@ htmlcov/
 
 # Jupyter Notebooks checkpoints
 .ipynb_checkpoints/
+
+# Wake-up script artifacts
+wakeup_log.txt
+wakeup_state.json
